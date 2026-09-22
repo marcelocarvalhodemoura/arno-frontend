@@ -27,8 +27,8 @@ import { useFetch } from "@/shared/hooks/use-fetch";
 import { api } from "@/core/http";
 import { useToast } from "@/shared/feedback/toast";
 
-const SHORT_MONTHS = ["Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
-const SCOUT_MONTHS = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+const SHORT_MONTHS = ["Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov"];
+const SCOUT_MONTHS = [3, 4, 5, 6, 7, 8, 9, 10, 11];
 
 export default function Mensalidades() {
   const navigate = useNavigate();
@@ -41,6 +41,7 @@ export default function Mensalidades() {
   const [statusFilter, setStatusFilter] = useState<MemberStatus | "">("active");
   const [roleFilter, setRoleFilter] = useState<MemberRole | "">("");
   const [picked, setPicked] = useState<{ row: MensalidadeRow; cell: MensalidadeCell } | null>(null);
+  const [paidAtDraft, setPaidAtDraft] = useState(todayISO());
   const [busy, setBusy] = useState(false);
   const [dueDayDraft, setDueDayDraft] = useState("");
   const today = todayISO();
@@ -49,7 +50,7 @@ export default function Mensalidades() {
   const chargeMonth = SCOUT_MONTHS.includes(month) ? month : SCOUT_MONTHS.includes(currentMonth) ? currentMonth : 3;
 
   const rows = list.data?.rows ?? [];
-  const months = list.data?.months ?? [3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+  const months = list.data?.months ?? SCOUT_MONTHS;
   const dueDay = list.data?.dueDay ?? 10;
 
   useEffect(() => {
@@ -140,18 +141,26 @@ export default function Mensalidades() {
     }
   }
 
-  async function markPaid(transactionId: string) {
+  async function settle(timing: "on_time" | "late") {
+    if (!picked?.cell.transactionId) return;
+    const paidAt = paidAtDraft || todayISO();
     setBusy(true);
     try {
-      await api(`/transactions/${transactionId}`, {
+      const tx = await api<{ amount: number; paymentStatus: string; paidAt?: string }>("/mensalidades/settle", {
         method: "PATCH",
-        body: JSON.stringify({ paymentStatus: "paid", notifyReceipt: true }),
+        body: JSON.stringify({
+          transactionId: picked.cell.transactionId,
+          timing,
+          paidAt,
+          notifyReceipt: true,
+        }),
       });
-      toast.success("Mensalidade marcada como paga. Comprovante entra na fila se houver contato.");
+      const label = timing === "on_time" ? "pontual" : "com atraso";
+      toast.success(`Mensalidade registrada como ${label} (${brl(tx.amount)}). Comprovante entra na fila se houver contato.`);
       setPicked(null);
       await list.reload();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Não foi possível marcar como paga");
+      toast.error(err instanceof Error ? err.message : "Não foi possível registrar o pagamento");
     } finally {
       setBusy(false);
     }
@@ -371,7 +380,13 @@ export default function Mensalidades() {
                             key={cell.month}
                             className={`fees-grid__month${year === currentYear && cell.month === currentMonth ? " is-current" : ""}`}
                           >
-                            <FeeCell cell={cell} onOpen={() => setPicked({ row, cell })} />
+                            <FeeCell
+                              cell={cell}
+                              onOpen={() => {
+                                setPaidAtDraft(todayISO());
+                                setPicked({ row, cell });
+                              }}
+                            />
                           </td>
                         ))}
                       </tr>
@@ -409,6 +424,20 @@ export default function Mensalidades() {
                   ? " (pioneiro não tem parcela do clube)"
                   : " (R$ 20)"}
             </p>
+            {picked.cell.status !== "paid" ? (
+              <>
+                <p className="muted">
+                  Pontual: {brl(picked.cell.onTimeAmount)}
+                  {picked.cell.lateAmount !== picked.cell.onTimeAmount
+                    ? ` · Com atraso: ${brl(picked.cell.lateAmount)}`
+                    : ""}
+                </p>
+                <label className="field">
+                  <span>Data do pagamento</span>
+                  <input type="date" value={paidAtDraft} onChange={(e) => setPaidAtDraft(e.target.value)} />
+                </label>
+              </>
+            ) : null}
             {!channels.data?.email && !channels.data?.whatsapp ? (
               <p className="muted">
                 Configure MAIL_HOST no .env (ou MAIL_MOCK=1) para disparar cobrança e comprovante.
@@ -463,14 +492,38 @@ export default function Mensalidades() {
                   >
                     Cobrar
                   </button>
-                  <SubmitButton
-                    type="button"
-                    busy={busy}
-                    busyLabel="Registrando…"
-                    onClick={() => (picked.cell.transactionId ? void markPaid(picked.cell.transactionId) : undefined)}
-                  >
-                    Marcar paga
-                  </SubmitButton>
+                  {picked.cell.lateAmount !== picked.cell.onTimeAmount ? (
+                    <>
+                      <SubmitButton
+                        type="button"
+                        busy={busy}
+                        busyLabel="Registrando…"
+                        disabled={!picked.cell.transactionId || !paidAtDraft}
+                        onClick={() => void settle("on_time")}
+                      >
+                        Pagar pontual ({brl(picked.cell.onTimeAmount)})
+                      </SubmitButton>
+                      <SubmitButton
+                        type="button"
+                        busy={busy}
+                        busyLabel="Registrando…"
+                        disabled={!picked.cell.transactionId || !paidAtDraft}
+                        onClick={() => void settle("late")}
+                      >
+                        Pagar com atraso ({brl(picked.cell.lateAmount)})
+                      </SubmitButton>
+                    </>
+                  ) : (
+                    <SubmitButton
+                      type="button"
+                      busy={busy}
+                      busyLabel="Registrando…"
+                      disabled={!picked.cell.transactionId || !paidAtDraft}
+                      onClick={() => void settle("on_time")}
+                    >
+                      Marcar paga ({brl(picked.cell.onTimeAmount)})
+                    </SubmitButton>
+                  )}
                 </>
               )}
             </div>
