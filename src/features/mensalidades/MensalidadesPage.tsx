@@ -224,7 +224,7 @@ export default function Mensalidades() {
       <PageHeader
         kicker="Mensalidades"
         title={`Ano escoteiro ${year}`}
-        subtitle={`Março a dezembro. Vencimento todo dia ${dueDay}. A mensalidade já inclui a parcela do clube (R$ 20, exceto pioneiros); dá para incluir ou remover por mês.`}
+        subtitle={`Março a novembro. Mar/abr: R$ 60 (R$ 15 pioneiros). A partir de maio: cartaz atual com taxa do clube e diluição. Vencimento todo dia ${dueDay}.`}
         actions={
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" }}>
             <button
@@ -358,7 +358,8 @@ export default function Mensalidades() {
                           <strong>{row.name}</strong>
                           <div className="muted">
                             {BRANCH_LABELS[row.branch]} · {roleLabel(row.role)}
-                            {row.clubeLtc ? " · sócio Lindóia" : ""} · {brl(row.monthlyFee)}
+                            {row.clubeLtc ? " · sócio Lindóia" : ""}
+                            {row.feeOverride != null ? " · valor especial" : ""} · {brl(row.monthlyFee)}
                             {row.lateFee !== row.monthlyFee ? ` · após dia ${row.dueDay} ${brl(row.lateFee)}` : ""}
                           </div>
                           <div className="muted">
@@ -402,7 +403,11 @@ export default function Mensalidades() {
             <p className="muted">
               Taxa do clube neste mês:{" "}
               <strong>{picked.cell.clubFeeIncluded ? "incluída" : "removida"}</strong>
-              {picked.row.branch === "pioneiro" ? " (pioneiro não tem parcela do clube)" : " (R$ 20)"}
+              {picked.row.feeOverride != null
+                ? " (valor especial: a taxa do clube não altera o total)"
+                : picked.row.branch === "pioneiro"
+                  ? " (pioneiro não tem parcela do clube)"
+                  : " (R$ 20)"}
             </p>
             {!channels.data?.email && !channels.data?.whatsapp ? (
               <p className="muted">
@@ -425,7 +430,7 @@ export default function Mensalidades() {
                 <button
                   className="btn btn-outline"
                   type="button"
-                  disabled={busy || picked.row.branch === "pioneiro"}
+                  disabled={busy || picked.row.branch === "pioneiro" || picked.row.feeOverride != null}
                   onClick={() =>
                     void setClubFee(picked.cell.transactionId!, !picked.cell.clubFeeIncluded)
                   }

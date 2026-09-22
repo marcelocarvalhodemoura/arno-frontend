@@ -6,6 +6,7 @@ import {
   lateMonthlyFee,
   onTimeMonthlyFee,
   paysMensalidade,
+  resolveFeeOverride,
   resolveMensalidadeDueDay,
   type AccountHolderKind,
   type Member,
@@ -32,7 +33,7 @@ import { api } from "@/core/http";
 import { useToast } from "@/shared/feedback/toast";
 import { brl, formatDate, holderKindLabel, roleLabel, yesNo } from "@/shared/lib/format";
 import { matchesQuery, usePagedList } from "@/shared/lib/listing";
-import { formatMoney, maskPhone } from "@/shared/lib/masks";
+import { formatMoney, maskPhone, maskMoney, parseMoney } from "@/shared/lib/masks";
 import { formClass, submitAttempt } from "@/shared/lib/form";
 import { useFetch } from "@/shared/hooks/use-fetch";
 
@@ -52,20 +53,40 @@ type GuardianDraft = {
   email: string;
 };
 
-function tableAmounts(branch: YouthBranchId, clubeLtc: boolean, role: MemberRole) {
-  const profile = { branch, clubeLtc, role };
+function tableAmounts(
+  branch: YouthBranchId,
+  clubeLtc: boolean,
+  role: MemberRole,
+  feeOverride?: number | null,
+) {
+  const profile = { branch, clubeLtc, role, feeOverride };
   return { onTime: onTimeMonthlyFee(profile), late: lateMonthlyFee(profile) };
 }
 
-function feeLabel(profile: { branch: YouthBranchId; clubeLtc: boolean; role: MemberRole }) {
+function feeLabel(profile: {
+  branch: YouthBranchId;
+  clubeLtc: boolean;
+  role: MemberRole;
+  feeOverride?: number | null;
+}) {
   if (!paysMensalidade(profile)) return "Não paga";
   return formatMoney(onTimeMonthlyFee(profile));
 }
 
-function withTableFee<T extends { branch: YouthBranchId; role: MemberRole; clubeLtc: boolean; monthlyFee: string }>(
-  form: T,
-): T {
-  return { ...form, monthlyFee: feeLabel(form) };
+function withTableFee<
+  T extends {
+    branch: YouthBranchId;
+    role: MemberRole;
+    clubeLtc: boolean;
+    monthlyFee: string;
+    feeOverride: string;
+  },
+>(form: T): T {
+  const override = form.feeOverride.trim() ? parseMoney(form.feeOverride) : null;
+  return {
+    ...form,
+    monthlyFee: feeLabel({ ...form, feeOverride: Number.isFinite(override) ? override : null }),
+  };
 }
 
 const emptyMember = {
@@ -75,6 +96,7 @@ const emptyMember = {
   branch: "escoteiro" as YouthBranchId,
   role: "jovem" as MemberRole,
   monthlyFee: formatMoney(onTimeMonthlyFee({ branch: "escoteiro", role: "jovem", clubeLtc: false })),
+  feeOverride: "",
   joinedAt: new Date().toISOString().slice(0, 10),
   clubeLtc: false,
 };
@@ -168,6 +190,7 @@ export default function Members() {
       branch: member.branch,
       role: member.role,
       monthlyFee: feeLabel(member),
+      feeOverride: member.feeOverride != null ? formatMoney(member.feeOverride) : "",
       joinedAt: member.joinedAt.slice(0, 10),
       clubeLtc: member.clubeLtc,
     });
@@ -212,9 +235,24 @@ export default function Members() {
   async function save(e: FormEvent<HTMLFormElement>) {
     if (!submitAttempt(e, setAttempted)) return;
     setError(null);
+    const overrideRaw = form.feeOverride.trim();
+    const feeOverride = overrideRaw ? parseMoney(overrideRaw) : null;
+    if (overrideRaw && (feeOverride == null || Number.isNaN(feeOverride) || feeOverride < 0)) return;
     const payload: Record<string, unknown> = {
-      ...form,
-      monthlyFee: onTimeMonthlyFee({ branch: form.branch, role: form.role, clubeLtc: form.clubeLtc }),
+      name: form.name,
+      email: form.email,
+      phone: form.phone,
+      branch: form.branch,
+      role: form.role,
+      joinedAt: form.joinedAt,
+      clubeLtc: form.clubeLtc,
+      feeOverride: overrideRaw ? feeOverride : null,
+      monthlyFee: onTimeMonthlyFee({
+        branch: form.branch,
+        role: form.role,
+        clubeLtc: form.clubeLtc,
+        feeOverride: overrideRaw ? feeOverride : null,
+      }),
     };
     if (form.role === "jovem") {
       const list = guardians
@@ -464,7 +502,13 @@ export default function Members() {
                         </td>
                         <td className="num">
                           {paysMensalidade(m) && m.monthlyFee ? brl(m.monthlyFee) : "Não paga"}
-                          {paysMensalidade(m) && !m.clubeLtc && lateMonthlyFee(m) !== m.monthlyFee ? (
+                          {paysMensalidade(m) && resolveFeeOverride(m) != null ? (
+                            <div className="muted">valor especial</div>
+                          ) : null}
+                          {paysMensalidade(m) &&
+                          resolveFeeOverride(m) == null &&
+                          !m.clubeLtc &&
+                          lateMonthlyFee(m) !== m.monthlyFee ? (
                             <div className="muted">
                               após dia {dueDay}: {brl(lateMonthlyFee(m))}
                             </div>
@@ -588,6 +632,10 @@ export default function Members() {
                     if (!paysMensalidade(form)) {
                       return "Dirigentes, escotistas e o Clube da Flor de Lis não pagam mensalidade.";
                     }
+                    const override = form.feeOverride.trim() ? parseMoney(form.feeOverride) : null;
+                    if (override != null && override >= 0) {
+                      return `Valor especial fixo a partir de maio: ${brl(override)}. Março/abril seguem a tabela antiga (R$ 60 / R$ 15).`;
+                    }
                     const amounts = tableAmounts(form.branch, form.clubeLtc, form.role);
                     if (form.clubeLtc) {
                       return form.branch === "pioneiro"
@@ -596,6 +644,21 @@ export default function Members() {
                     }
                     return `Até o dia ${dueDay}: ${brl(amounts.onTime)}. Após o dia ${dueDay}: ${brl(amounts.late)}.`;
                   })()}
+                </small>
+              </label>
+              <label className="field">
+                <span>Valor especial (opcional)</span>
+                <input
+                  inputMode="decimal"
+                  placeholder="Ex.: 82,00"
+                  value={form.feeOverride}
+                  disabled={!paysMensalidade(form)}
+                  onChange={(e) =>
+                    setForm((current) => withTableFee({ ...current, feeOverride: maskMoney(e.target.value) }))
+                  }
+                />
+                <small className="muted">
+                  Filho de chefe ou irmão no grupo: informe R$ 82,00. Deixe vazio para usar a tabela oficial.
                 </small>
               </label>
               <label className="field">

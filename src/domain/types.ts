@@ -199,6 +199,8 @@ export interface Member {
   branch: YouthBranchId;
   role: MemberRole;
   monthlyFee: number;
+  /** Valor fixo opcional (ex.: R$ 82 filho de chefe / irmão). Null = tabela oficial. */
+  feeOverride?: number | null;
   status: MemberStatus;
   joinedAt: string;
   clubeLtc: boolean;
@@ -341,6 +343,7 @@ export interface MensalidadeRow {
   monthlyFee: number;
   lateFee: number;
   clubeLtc: boolean;
+  feeOverride?: number | null;
   cells: MensalidadeCell[];
 }
 
@@ -450,8 +453,11 @@ export function resolveMensalidadeDueDay(value?: number | null): number {
 }
 
 export const MENSALIDADE_TABLE = {
+  earlyRegular: 60,
+  earlyPioneer: 15,
   baseRegular: 75,
   basePioneer: 25,
+  /** Diluição de dez/jan/fev — só em maio–novembro. */
   extra: 4.5,
   punctual: 10,
   late: 20,
@@ -462,6 +468,7 @@ export type MensalidadeProfile = {
   branch: string;
   role?: string;
   clubeLtc: boolean;
+  feeOverride?: number | null;
 };
 
 /** Dirigente, escotista e Clube da Flor de Lis não pagam mensalidade. */
@@ -479,29 +486,61 @@ export function amountsNear(a: number, b: number): boolean {
   return Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) < 0.05;
 }
 
-export function mensalidadeBase(branch: string): number {
+export function isEarlyMensalidadeMonth(month: number): boolean {
+  return month === 3 || month === 4;
+}
+
+export function isCurrentMensalidadeMonth(month: number): boolean {
+  return month >= 5 && month <= 11;
+}
+
+export function monthFromDate(date: string): number {
+  return Number(date.slice(5, 7));
+}
+
+export function resolveFeeOverride(profile: { feeOverride?: number | null }): number | null {
+  if (profile.feeOverride == null) return null;
+  const n = Number(profile.feeOverride);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return money(n);
+}
+
+/** Sem mês → tabela vigente (maio–novembro). */
+export function mensalidadeBase(branch: string, month = 5): number {
+  if (isEarlyMensalidadeMonth(month)) {
+    return branch === "pioneiro" ? MENSALIDADE_TABLE.earlyPioneer : MENSALIDADE_TABLE.earlyRegular;
+  }
   return branch === "pioneiro" ? MENSALIDADE_TABLE.basePioneer : MENSALIDADE_TABLE.baseRegular;
 }
 
-export function onTimeMonthlyFee(profile: MensalidadeProfile): number {
+export function onTimeMonthlyFee(profile: MensalidadeProfile, month = 5): number {
   if (!paysMensalidade(profile)) return 0;
-  const base = mensalidadeBase(profile.branch);
+  if (isEarlyMensalidadeMonth(month)) return mensalidadeBase(profile.branch, month);
+  const override = resolveFeeOverride(profile);
+  if (override != null) return override;
+  const base = mensalidadeBase(profile.branch, month);
   if (profile.clubeLtc) return base;
   return money(base + MENSALIDADE_TABLE.punctual + MENSALIDADE_TABLE.extra);
 }
 
-export function lateMonthlyFee(profile: MensalidadeProfile): number {
+export function lateMonthlyFee(profile: MensalidadeProfile, month = 5): number {
   if (!paysMensalidade(profile)) return 0;
-  const base = mensalidadeBase(profile.branch);
+  if (isEarlyMensalidadeMonth(month)) return mensalidadeBase(profile.branch, month);
+  const override = resolveFeeOverride(profile);
+  if (override != null) return override;
+  const base = mensalidadeBase(profile.branch, month);
   if (profile.clubeLtc) return base;
   return money(base + MENSALIDADE_TABLE.late + MENSALIDADE_TABLE.extra);
 }
 
 export function expectedMonthlyFee(profile: MensalidadeProfile, dueDate: string, today: string): number {
-  return dueDate < today ? lateMonthlyFee(profile) : onTimeMonthlyFee(profile);
+  const month = monthFromDate(dueDate);
+  return dueDate < today ? lateMonthlyFee(profile, month) : onTimeMonthlyFee(profile, month);
 }
 
-export function clubFeeShare(branch: string): number {
+export function clubFeeShare(branch: string, month = 5, profile?: MensalidadeProfile): number {
+  if (!isCurrentMensalidadeMonth(month)) return 0;
+  if (profile && resolveFeeOverride(profile) != null) return 0;
   return branch === "pioneiro" ? 0 : MENSALIDADE_TABLE.clubShare;
 }
 
@@ -511,8 +550,9 @@ export function expectedMensalidadeAmount(
   today: string,
   clubFeeIncluded: boolean,
 ): number {
+  const month = monthFromDate(dueDate);
   const standard = expectedMonthlyFee(profile, dueDate, today);
-  const share = clubFeeShare(profile.branch);
+  const share = clubFeeShare(profile.branch, month, profile);
   if (!share) return standard;
   if (profile.clubeLtc) {
     return clubFeeIncluded ? money(standard + share) : standard;
@@ -525,15 +565,26 @@ export function defaultClubFeeIncluded(profile: { clubeLtc?: boolean }): boolean
 }
 
 export function isOfficialMensalidadeAmount(profile: MensalidadeProfile, amount: number): boolean {
-  const onTime = onTimeMonthlyFee(profile);
-  const late = lateMonthlyFee(profile);
-  if (amountsNear(amount, onTime) || amountsNear(amount, late)) return true;
-  const share = clubFeeShare(profile.branch);
-  if (!share) return false;
-  if (profile.clubeLtc) {
-    return amountsNear(amount, money(onTime + share)) || amountsNear(amount, money(late + share));
+  const override = resolveFeeOverride(profile);
+  if (override != null && amountsNear(amount, override)) return true;
+  for (const month of [3, 5] as const) {
+    const onTime = onTimeMonthlyFee(profile, month);
+    const late = lateMonthlyFee(profile, month);
+    if (amountsNear(amount, onTime) || amountsNear(amount, late)) return true;
+    const share = clubFeeShare(profile.branch, month, profile);
+    if (!share) continue;
+    if (profile.clubeLtc) {
+      if (amountsNear(amount, money(onTime + share)) || amountsNear(amount, money(late + share))) return true;
+      continue;
+    }
+    if (
+      amountsNear(amount, money(Math.max(0, onTime - share))) ||
+      amountsNear(amount, money(Math.max(0, late - share)))
+    ) {
+      return true;
+    }
   }
-  return amountsNear(amount, money(Math.max(0, onTime - share))) || amountsNear(amount, money(Math.max(0, late - share)));
+  return false;
 }
 
 export function matchesMensalidadeAmount(
