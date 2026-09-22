@@ -231,8 +231,9 @@ Carla Dias;carla@arnofriedrich.org.br;(51) 99999-3003;não;0;Adulto;DIRETORIA;;;
     const values = mapped.flatMap((row) => (row.mapped.ok ? [row.mapped.value] : []));
     expect(values[0]?.guardians).toHaveLength(2);
     expect(values[0]?.guardians?.map((item) => item.relationship)).toEqual(["Mãe", "Pai"]);
-    expect(values[1]).toMatchObject({ role: "escotista", branch: "flor-de-lis", clubeLtc: true });
-    expect(values[2]).toMatchObject({ role: "dirigente", branch: "flor-de-lis" });
+    expect(values[0]?.monthlyFee).toBe(89.5);
+    expect(values[1]).toMatchObject({ role: "escotista", branch: "flor-de-lis", clubeLtc: true, monthlyFee: 0 });
+    expect(values[2]).toMatchObject({ role: "dirigente", branch: "flor-de-lis", monthlyFee: 0 });
   });
 
   it("drops a responsible e-mail that is not an e-mail", () => {

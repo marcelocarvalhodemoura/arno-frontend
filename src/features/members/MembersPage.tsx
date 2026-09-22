@@ -5,6 +5,7 @@ import {
   YOUTH_BRANCHES,
   lateMonthlyFee,
   onTimeMonthlyFee,
+  paysMensalidade,
   resolveMensalidadeDueDay,
   type AccountHolderKind,
   type Member,
@@ -51,13 +52,20 @@ type GuardianDraft = {
   email: string;
 };
 
-function tableAmounts(branch: YouthBranchId, clubeLtc: boolean) {
-  const profile = { branch, clubeLtc };
+function tableAmounts(branch: YouthBranchId, clubeLtc: boolean, role: MemberRole) {
+  const profile = { branch, clubeLtc, role };
   return { onTime: onTimeMonthlyFee(profile), late: lateMonthlyFee(profile) };
 }
 
-function withTableFee<T extends { branch: YouthBranchId; clubeLtc: boolean; monthlyFee: string }>(form: T): T {
-  return { ...form, monthlyFee: formatMoney(onTimeMonthlyFee(form)) };
+function feeLabel(profile: { branch: YouthBranchId; clubeLtc: boolean; role: MemberRole }) {
+  if (!paysMensalidade(profile)) return "Não paga";
+  return formatMoney(onTimeMonthlyFee(profile));
+}
+
+function withTableFee<T extends { branch: YouthBranchId; role: MemberRole; clubeLtc: boolean; monthlyFee: string }>(
+  form: T,
+): T {
+  return { ...form, monthlyFee: feeLabel(form) };
 }
 
 const emptyMember = {
@@ -66,7 +74,7 @@ const emptyMember = {
   phone: "",
   branch: "escoteiro" as YouthBranchId,
   role: "jovem" as MemberRole,
-  monthlyFee: formatMoney(onTimeMonthlyFee({ branch: "escoteiro", clubeLtc: false })),
+  monthlyFee: formatMoney(onTimeMonthlyFee({ branch: "escoteiro", role: "jovem", clubeLtc: false })),
   joinedAt: new Date().toISOString().slice(0, 10),
   clubeLtc: false,
 };
@@ -159,7 +167,7 @@ export default function Members() {
       phone: maskPhone(member.phone),
       branch: member.branch,
       role: member.role,
-      monthlyFee: formatMoney(member.monthlyFee),
+      monthlyFee: feeLabel(member),
       joinedAt: member.joinedAt.slice(0, 10),
       clubeLtc: member.clubeLtc,
     });
@@ -191,7 +199,7 @@ export default function Members() {
   }
 
   function changeRole(role: MemberRole) {
-    setForm((current) => ({ ...current, role }));
+    setForm((current) => withTableFee({ ...current, role }));
     if (role === "jovem" && guardians.length === 0) {
       setGuardians([blankGuardian()]);
     }
@@ -206,7 +214,7 @@ export default function Members() {
     setError(null);
     const payload: Record<string, unknown> = {
       ...form,
-      monthlyFee: onTimeMonthlyFee({ branch: form.branch, clubeLtc: form.clubeLtc }),
+      monthlyFee: onTimeMonthlyFee({ branch: form.branch, role: form.role, clubeLtc: form.clubeLtc }),
     };
     if (form.role === "jovem") {
       const list = guardians
@@ -455,8 +463,8 @@ export default function Members() {
                             : "—"}
                         </td>
                         <td className="num">
-                          {m.monthlyFee ? brl(m.monthlyFee) : "—"}
-                          {!m.clubeLtc && lateMonthlyFee(m) !== m.monthlyFee ? (
+                          {paysMensalidade(m) && m.monthlyFee ? brl(m.monthlyFee) : "Não paga"}
+                          {paysMensalidade(m) && !m.clubeLtc && lateMonthlyFee(m) !== m.monthlyFee ? (
                             <div className="muted">
                               após dia {dueDay}: {brl(lateMonthlyFee(m))}
                             </div>
@@ -577,7 +585,10 @@ export default function Members() {
                 <input readOnly value={form.monthlyFee} />
                 <small className="muted">
                   {(() => {
-                    const amounts = tableAmounts(form.branch, form.clubeLtc);
+                    if (!paysMensalidade(form)) {
+                      return "Dirigentes, escotistas e o Clube da Flor de Lis não pagam mensalidade.";
+                    }
+                    const amounts = tableAmounts(form.branch, form.clubeLtc, form.role);
                     if (form.clubeLtc) {
                       return form.branch === "pioneiro"
                         ? "Jovem pioneiro sócio: só a base de R$ 25,00."

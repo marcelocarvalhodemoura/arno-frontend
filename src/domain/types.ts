@@ -262,6 +262,8 @@ export interface Transaction {
   projectId?: string;
   notes?: string;
   externalId?: string;
+  /** Mensalidade: se a parcela do clube (R$ 20) entra neste mês. */
+  clubFeeIncluded?: boolean;
   createdBy?: string;
   createdAt: string;
   updatedAt?: string;
@@ -324,6 +326,8 @@ export interface MensalidadeCell {
   status: MensalidadeCellStatus;
   transactionId?: string;
   amount: number;
+  /** Se a parcela do clube está incluída neste mês. */
+  clubFeeIncluded: boolean;
 }
 
 export interface MensalidadeRow {
@@ -451,12 +455,21 @@ export const MENSALIDADE_TABLE = {
   extra: 4.5,
   punctual: 10,
   late: 20,
+  clubShare: 20,
 } as const;
 
 export type MensalidadeProfile = {
   branch: string;
+  role?: string;
   clubeLtc: boolean;
 };
+
+/** Dirigente, escotista e Clube da Flor de Lis não pagam mensalidade. */
+export function paysMensalidade(profile: { role?: string; branch?: string }): boolean {
+  if (profile.branch === "flor-de-lis") return false;
+  if (profile.role === "escotista" || profile.role === "dirigente" || profile.role === "clube") return false;
+  return true;
+}
 
 function money(n: number): number {
   return Math.round(n * 100) / 100;
@@ -471,12 +484,14 @@ export function mensalidadeBase(branch: string): number {
 }
 
 export function onTimeMonthlyFee(profile: MensalidadeProfile): number {
+  if (!paysMensalidade(profile)) return 0;
   const base = mensalidadeBase(profile.branch);
   if (profile.clubeLtc) return base;
   return money(base + MENSALIDADE_TABLE.punctual + MENSALIDADE_TABLE.extra);
 }
 
 export function lateMonthlyFee(profile: MensalidadeProfile): number {
+  if (!paysMensalidade(profile)) return 0;
   const base = mensalidadeBase(profile.branch);
   if (profile.clubeLtc) return base;
   return money(base + MENSALIDADE_TABLE.late + MENSALIDADE_TABLE.extra);
@@ -486,8 +501,39 @@ export function expectedMonthlyFee(profile: MensalidadeProfile, dueDate: string,
   return dueDate < today ? lateMonthlyFee(profile) : onTimeMonthlyFee(profile);
 }
 
+export function clubFeeShare(branch: string): number {
+  return branch === "pioneiro" ? 0 : MENSALIDADE_TABLE.clubShare;
+}
+
+export function expectedMensalidadeAmount(
+  profile: MensalidadeProfile,
+  dueDate: string,
+  today: string,
+  clubFeeIncluded: boolean,
+): number {
+  const standard = expectedMonthlyFee(profile, dueDate, today);
+  const share = clubFeeShare(profile.branch);
+  if (!share) return standard;
+  if (profile.clubeLtc) {
+    return clubFeeIncluded ? money(standard + share) : standard;
+  }
+  return clubFeeIncluded ? standard : money(Math.max(0, standard - share));
+}
+
+export function defaultClubFeeIncluded(profile: { clubeLtc?: boolean }): boolean {
+  return !profile.clubeLtc;
+}
+
 export function isOfficialMensalidadeAmount(profile: MensalidadeProfile, amount: number): boolean {
-  return amountsNear(amount, onTimeMonthlyFee(profile)) || amountsNear(amount, lateMonthlyFee(profile));
+  const onTime = onTimeMonthlyFee(profile);
+  const late = lateMonthlyFee(profile);
+  if (amountsNear(amount, onTime) || amountsNear(amount, late)) return true;
+  const share = clubFeeShare(profile.branch);
+  if (!share) return false;
+  if (profile.clubeLtc) {
+    return amountsNear(amount, money(onTime + share)) || amountsNear(amount, money(late + share));
+  }
+  return amountsNear(amount, money(Math.max(0, onTime - share))) || amountsNear(amount, money(Math.max(0, late - share)));
 }
 
 export function matchesMensalidadeAmount(

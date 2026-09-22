@@ -157,6 +157,63 @@ export default function Mensalidades() {
     }
   }
 
+  async function setClubFee(transactionId: string, clubFeeIncluded: boolean) {
+    setBusy(true);
+    try {
+      const tx = await api<{ amount: number; clubFeeIncluded?: boolean }>("/mensalidades/club-fee", {
+        method: "PATCH",
+        body: JSON.stringify({ transactionId, clubFeeIncluded }),
+      });
+      toast.success(clubFeeIncluded ? "Taxa do clube incluída neste mês." : "Taxa do clube removida neste mês.");
+      setPicked((current) =>
+        current && current.cell.transactionId === transactionId
+          ? {
+              ...current,
+              cell: {
+                ...current.cell,
+                clubFeeIncluded,
+                amount: tx.amount,
+              },
+            }
+          : current,
+      );
+      await list.reload();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Não foi possível alterar a taxa do clube");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function setClubFeeBulk(clubFeeIncluded: boolean) {
+    const label = MONTHS[chargeMonth - 1];
+    const action = clubFeeIncluded ? "incluir" : "remover";
+    if (
+      !confirm(
+        `Confirma ${action} a taxa do clube (R$ 20, exceto pioneiros) em todas as mensalidades pendentes de ${label}/${year}?`,
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const result = await api<{ updated: number }>("/mensalidades/club-fee/bulk", {
+        method: "POST",
+        body: JSON.stringify({ year, month: chargeMonth, clubFeeIncluded }),
+      });
+      toast.success(
+        result.updated
+          ? `${result.updated} mensalidade(s) atualizada(s) em ${label}.`
+          : `Nenhuma mensalidade pendente alterada em ${label}.`,
+      );
+      await list.reload();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Não foi possível aplicar em massa");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (!list.data) {
     if (list.error) return <p className="error">{list.error}</p>;
     return <PageLoader label="Carregando mensalidades…" />;
@@ -167,16 +224,34 @@ export default function Mensalidades() {
       <PageHeader
         kicker="Mensalidades"
         title={`Ano escoteiro ${year}`}
-        subtitle={`Março a dezembro. Vencimento todo dia ${dueDay}. Não sócios pagam a taxa extra e o acréscimo de pontualidade; sócios do Lindóia pagam só a base.`}
+        subtitle={`Março a dezembro. Vencimento todo dia ${dueDay}. A mensalidade já inclui a parcela do clube (R$ 20, exceto pioneiros); dá para incluir ou remover por mês.`}
         actions={
-          <button
-            className="btn btn-primary"
-            type="button"
-            disabled={busy}
-            onClick={() => void notify("charge", undefined, chargeMonth)}
-          >
-            Cobrar {MONTHS[chargeMonth - 1]}
-          </button>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" }}>
+            <button
+              className="btn btn-outline"
+              type="button"
+              disabled={busy}
+              onClick={() => void setClubFeeBulk(true)}
+            >
+              Incluir clube · {MONTHS[chargeMonth - 1]}
+            </button>
+            <button
+              className="btn btn-outline"
+              type="button"
+              disabled={busy}
+              onClick={() => void setClubFeeBulk(false)}
+            >
+              Remover clube · {MONTHS[chargeMonth - 1]}
+            </button>
+            <button
+              className="btn btn-primary"
+              type="button"
+              disabled={busy}
+              onClick={() => void notify("charge", undefined, chargeMonth)}
+            >
+              Cobrar {MONTHS[chargeMonth - 1]}
+            </button>
+          </div>
         }
       />
 
@@ -324,6 +399,11 @@ export default function Mensalidades() {
               {settlementLabel(picked.cell.status)} · {brl(picked.cell.amount)}
               {picked.cell.dueDate ? ` · vence ${formatDate(picked.cell.dueDate)}` : ""}
             </p>
+            <p className="muted">
+              Taxa do clube neste mês:{" "}
+              <strong>{picked.cell.clubFeeIncluded ? "incluída" : "removida"}</strong>
+              {picked.row.branch === "pioneiro" ? " (pioneiro não tem parcela do clube)" : " (R$ 20)"}
+            </p>
             {!channels.data?.email && !channels.data?.whatsapp ? (
               <p className="muted">
                 Configure MAIL_HOST no .env (ou MAIL_MOCK=1) para disparar cobrança e comprovante.
@@ -341,6 +421,18 @@ export default function Mensalidades() {
               >
                 Ver no caixa
               </button>
+              {picked.cell.status !== "paid" && picked.cell.transactionId ? (
+                <button
+                  className="btn btn-outline"
+                  type="button"
+                  disabled={busy || picked.row.branch === "pioneiro"}
+                  onClick={() =>
+                    void setClubFee(picked.cell.transactionId!, !picked.cell.clubFeeIncluded)
+                  }
+                >
+                  {picked.cell.clubFeeIncluded ? "Remover taxa do clube" : "Incluir taxa do clube"}
+                </button>
+              ) : null}
               {picked.cell.status === "paid" ? (
                 <SubmitButton
                   type="button"
@@ -392,11 +484,14 @@ function FeeCell({ cell, onOpen }: { cell: MensalidadeCell; onOpen: () => void }
     <button
       type="button"
       className={`fee-cell fee-cell--${cell.status}`}
-      title={`${settlementLabel(cell.status)} · vencimento ${formatDate(cell.dueDate ?? "")}`}
+      title={`${settlementLabel(cell.status)} · vencimento ${formatDate(cell.dueDate ?? "")}${
+        cell.clubFeeIncluded ? "" : " · sem taxa do clube"
+      }`}
       onClick={onOpen}
     >
       <Badge kind={cell.status}>{settlementLabel(cell.status)}</Badge>
       <small>{brl(cell.amount)}</small>
+      {!cell.clubFeeIncluded ? <small className="muted">sem clube</small> : null}
     </button>
   );
 }

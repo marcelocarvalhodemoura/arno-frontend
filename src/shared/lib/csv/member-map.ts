@@ -275,7 +275,7 @@ function mapMemberCluster(rows: Record<string, string>[], usedEmails: Set<string
       phone,
       branch,
       role,
-      monthlyFee: onTimeMonthlyFee({ branch, clubeLtc }),
+      monthlyFee: onTimeMonthlyFee({ branch, role, clubeLtc }),
       joinedAt,
       clubeLtc,
       guardians: guardians.length ? guardians : undefined,

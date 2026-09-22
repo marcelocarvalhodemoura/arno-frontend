@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   ALL_BRANCHES,
   BRANCH_LABELS,
+  paysMensalidade,
   IMPORT_MAX_ROWS,
   IMPORT_PREVIEW_ROWS,
   type BranchId,
@@ -740,7 +741,9 @@ export default function Integration() {
                                     ? "Sem responsável"
                                     : "—"}
                               </td>
-                              <td>{brl(row.mapped.value.monthlyFee)}</td>
+                              <td>
+                                {paysMensalidade(row.mapped.value) ? brl(row.mapped.value.monthlyFee) : "Não paga"}
+                              </td>
                               <td>
                                 <span className="preview-ok">Ok · {roleLabel(row.mapped.value.role)}</span>
                               </td>
