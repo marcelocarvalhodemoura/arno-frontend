@@ -146,7 +146,12 @@ export default function Mensalidades() {
     const paidAt = paidAtDraft || todayISO();
     setBusy(true);
     try {
-      const tx = await api<{ amount: number; paymentStatus: string; paidAt?: string }>("/mensalidades/settle", {
+      const tx = await api<{
+        amount: number;
+        paymentStatus: string;
+        paidAt?: string;
+        notify?: { queued: number; sent: number; failed: number; skipped: number; note?: string };
+      }>("/mensalidades/settle", {
         method: "PATCH",
         body: JSON.stringify({
           transactionId: picked.cell.transactionId,
@@ -156,7 +161,21 @@ export default function Mensalidades() {
         }),
       });
       const label = timing === "on_time" ? "pontual" : "com atraso";
-      toast.success(`Mensalidade registrada como ${label} (${brl(tx.amount)}). Comprovante entra na fila se houver contato.`);
+      const notify = tx.notify;
+      const notifyParts = notify
+        ? [
+            notify.queued ? `${notify.queued} recibo(s) na fila` : "",
+            notify.sent ? `${notify.sent} enviado(s)` : "",
+            notify.skipped ? `${notify.skipped} sem contato` : "",
+            notify.failed ? `${notify.failed} falhou(aram)` : "",
+            notify.note ?? "",
+          ].filter(Boolean)
+        : [];
+      toast.success(
+        notifyParts.length
+          ? `Mensalidade ${label} (${brl(tx.amount)}). ${notifyParts.join(" · ")}.`
+          : `Mensalidade registrada como ${label} (${brl(tx.amount)}). Recibo de confirmação enfileirado.`,
+      );
       setPicked(null);
       await list.reload();
     } catch (err) {
