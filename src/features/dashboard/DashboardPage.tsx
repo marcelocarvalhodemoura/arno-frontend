@@ -17,10 +17,10 @@ const BRANCH_COLORS: Record<BranchId, string> = {
   filhote: "#ee9b00",
   lobinho: "#e8b423",
   escoteiro: "#2d8a4e",
-  senior: "#c8102e",
-  pioneiro: "#8b1a2b",
-  "flor-de-lis": "#c45d7a",
-  grupo: "#0c2d6b",
+  senior: "#8b1a2b",
+  pioneiro: "#c8102e",
+  "flor-de-lis": "#0c2d6b",
+  grupo: "#4BA3E3",
 };
 
 export default function Dashboard() {

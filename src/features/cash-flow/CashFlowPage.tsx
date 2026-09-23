@@ -1247,6 +1247,6 @@ export default function CashFlow() {
 }
 
 function colorOf(branch: BranchId): string {
-  if (branch === "grupo") return "#0c2d6b";
+  if (branch === "grupo") return "#4BA3E3";
   return YOUTH_BRANCHES.find((b) => b.id === branch)?.color ?? "#0c2d6b";
 }

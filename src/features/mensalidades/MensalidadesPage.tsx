@@ -383,15 +383,34 @@ export default function Mensalidades() {
                     listing.pageRows.map((row) => (
                       <tr key={row.memberId}>
                         <td className="fees-grid__name">
-                          <strong>{row.name}</strong>
-                          <div className="muted">
-                            {BRANCH_LABELS[row.branch]} · {roleLabel(row.role)}
-                            {row.clubeLtc ? " · sócio Lindóia" : ""}
-                            {row.feeOverride != null ? " · valor especial" : ""} · {brl(row.monthlyFee)}
-                            {row.lateFee !== row.monthlyFee ? ` · após dia ${row.dueDay} ${brl(row.lateFee)}` : ""}
-                          </div>
-                          <div className="muted">
-                            Vence todo dia {row.dueDay} · ingresso {formatDate(row.joinedAt)}
+                          <div className="fees-grid__member">
+                            <span
+                              className="branch-dot"
+                              style={{
+                                background:
+                                  YOUTH_BRANCHES.find((item) => item.id === row.branch)?.color ?? "#0c2d6b",
+                              }}
+                              aria-hidden
+                            />
+                            <div>
+                              <strong>{row.name}</strong>
+                              <div className="muted">
+                                {BRANCH_LABELS[row.branch]} · {roleLabel(row.role)}
+                                {row.clubeLtc ? " · sócio Lindóia" : ""}
+                                {row.feeOverride != null
+                                  ? row.chiefChild
+                                    ? " · valor especial · filho de chefe"
+                                    : " · valor especial · irmão no grupo"
+                                  : ""}{" "}
+                                · {brl(row.monthlyFee)}
+                                {row.lateFee !== row.monthlyFee
+                                  ? ` · após dia ${row.dueDay} ${brl(row.lateFee)}`
+                                  : ""}
+                              </div>
+                              <div className="muted">
+                                Vence todo dia {row.dueDay} · ingresso {formatDate(row.joinedAt)}
+                              </div>
+                            </div>
                           </div>
                         </td>
                         {row.cells.map((cell) => (

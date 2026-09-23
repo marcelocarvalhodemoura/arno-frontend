@@ -44,7 +44,7 @@ type ProjectView = FinancialProject & {
 
 const TABS: { id: BranchId; unit: string; color: string }[] = [
   ...YOUTH_BRANCHES.map((item) => ({ id: item.id, unit: item.unit, color: item.color })),
-  { id: "grupo", unit: "Grupo", color: "#0c2d6b" },
+  { id: "grupo", unit: "Grupo", color: "#4BA3E3" },
 ];
 
 export default function Projects() {

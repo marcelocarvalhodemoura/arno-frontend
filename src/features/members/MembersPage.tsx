@@ -2,6 +2,7 @@ import { useMemo, useState, type FormEvent } from "react";
 import {
   BRANCH_LABELS,
   GUARDIAN_RELATIONSHIPS,
+  SPECIAL_FAMILY_FEE,
   YOUTH_BRANCHES,
   lateMonthlyFee,
   onTimeMonthlyFee,
@@ -33,12 +34,13 @@ import { api } from "@/core/http";
 import { useToast } from "@/shared/feedback/toast";
 import { brl, formatDate, holderKindLabel, roleLabel, yesNo } from "@/shared/lib/format";
 import { matchesQuery, usePagedList } from "@/shared/lib/listing";
-import { formatMoney, maskPhone, maskMoney, parseMoney } from "@/shared/lib/masks";
+import { formatMoney, maskPhone } from "@/shared/lib/masks";
 import { formClass, submitAttempt } from "@/shared/lib/form";
 import { useFetch } from "@/shared/hooks/use-fetch";
 
 type AuditUser = { id: string; name: string; username: string } | null;
 type MemberView = Member & {
+  siblingIds?: string[];
   accounts: (MemberAccount & { createdByUser?: AuditUser; updatedByUser?: AuditUser })[];
   guardians: (MemberGuardian & { createdByUser?: AuditUser; updatedByUser?: AuditUser })[];
   createdByUser?: AuditUser;
@@ -52,6 +54,12 @@ type GuardianDraft = {
   phone: string;
   email: string;
 };
+
+type DiscountKind = "none" | "chief_child" | "siblings";
+
+function familyFeeOverride(kind: DiscountKind): number | null {
+  return kind === "none" ? null : SPECIAL_FAMILY_FEE;
+}
 
 function tableAmounts(
   branch: YouthBranchId,
@@ -79,13 +87,13 @@ function withTableFee<
     role: MemberRole;
     clubeLtc: boolean;
     monthlyFee: string;
-    feeOverride: string;
+    discountKind: DiscountKind;
   },
 >(form: T): T {
-  const override = form.feeOverride.trim() ? parseMoney(form.feeOverride) : null;
+  const override = familyFeeOverride(form.discountKind);
   return {
     ...form,
-    monthlyFee: feeLabel({ ...form, feeOverride: Number.isFinite(override) ? override : null }),
+    monthlyFee: feeLabel({ ...form, feeOverride: override }),
   };
 }
 
@@ -96,7 +104,8 @@ const emptyMember = {
   branch: "escoteiro" as YouthBranchId,
   role: "jovem" as MemberRole,
   monthlyFee: formatMoney(onTimeMonthlyFee({ branch: "escoteiro", role: "jovem", clubeLtc: false })),
-  feeOverride: "",
+  discountKind: "none" as DiscountKind,
+  siblingIds: [] as string[],
   joinedAt: new Date().toISOString().slice(0, 10),
   clubeLtc: false,
 };
@@ -139,9 +148,31 @@ export default function Members() {
   const [savingAccount, setSavingAccount] = useState(false);
   const [attempted, setAttempted] = useState(false);
   const [attemptedAccount, setAttemptedAccount] = useState(false);
+  const [siblingQuery, setSiblingQuery] = useState("");
 
   const members = list.data ?? [];
   const dueDay = resolveMensalidadeDueDay(settings.data?.mensalidadeDueDay);
+  const siblingCandidates = useMemo(() => {
+    const eligible = members.filter(
+      (item) =>
+        item.id !== editing?.id &&
+        paysMensalidade(item) &&
+        item.status === "active" &&
+        !item.chiefChild,
+    );
+    const selected = eligible.filter((item) => form.siblingIds.includes(item.id));
+    const selectedIds = new Set(selected.map((item) => item.id));
+    const term = siblingQuery.trim();
+    const ready = term.length >= 2;
+    const matches = ready
+      ? eligible.filter(
+          (item) =>
+            !selectedIds.has(item.id) &&
+            matchesQuery(term, [item.name, item.email, BRANCH_LABELS[item.branch], roleLabel(item.role)]),
+        )
+      : [];
+    return { eligible, selected, matches, ready, term };
+  }, [members, editing?.id, form.siblingIds, siblingQuery]);
   const filtered = useMemo(
     () =>
       members.filter((m) => {
@@ -176,24 +207,36 @@ export default function Members() {
     setEditing(null);
     setForm(emptyMember);
     setGuardians([blankGuardian()]);
+    setSiblingQuery("");
     setError(null);
     setAttempted(false);
     setOpen(true);
   }
 
   function openEdit(member: MemberView) {
+    const siblings = member.siblingIds ?? [];
+    const discountKind: DiscountKind = member.chiefChild
+      ? "chief_child"
+      : siblings.length
+        ? "siblings"
+        : member.feeOverride != null
+          ? "chief_child"
+          : "none";
     setEditing(member);
-    setForm({
-      name: member.name,
-      email: member.email,
-      phone: maskPhone(member.phone),
-      branch: member.branch,
-      role: member.role,
-      monthlyFee: feeLabel(member),
-      feeOverride: member.feeOverride != null ? formatMoney(member.feeOverride) : "",
-      joinedAt: member.joinedAt.slice(0, 10),
-      clubeLtc: member.clubeLtc,
-    });
+    setForm(
+      withTableFee({
+        name: member.name,
+        email: member.email,
+        phone: maskPhone(member.phone),
+        branch: member.branch,
+        role: member.role,
+        monthlyFee: feeLabel(member),
+        discountKind,
+        siblingIds: siblings,
+        joinedAt: member.joinedAt.slice(0, 10),
+        clubeLtc: member.clubeLtc,
+      }),
+    );
     setGuardians(
       member.role === "jovem" && (member.guardians ?? []).length
         ? (member.guardians ?? []).map((guardian) => ({
@@ -209,6 +252,7 @@ export default function Members() {
     );
     setError(null);
     setAttempted(false);
+    setSiblingQuery("");
     setOpen(true);
   }
 
@@ -217,6 +261,7 @@ export default function Members() {
     setEditing(null);
     setForm(emptyMember);
     setGuardians([blankGuardian()]);
+    setSiblingQuery("");
     setError(null);
     setAttempted(false);
   }
@@ -235,9 +280,11 @@ export default function Members() {
   async function save(e: FormEvent<HTMLFormElement>) {
     if (!submitAttempt(e, setAttempted)) return;
     setError(null);
-    const overrideRaw = form.feeOverride.trim();
-    const feeOverride = overrideRaw ? parseMoney(overrideRaw) : null;
-    if (overrideRaw && (feeOverride == null || Number.isNaN(feeOverride) || feeOverride < 0)) return;
+    if (form.discountKind === "siblings" && form.siblingIds.length < 1) {
+      setError("Selecione ao menos um irmão associado");
+      return;
+    }
+    const feeOverride = familyFeeOverride(form.discountKind);
     const payload: Record<string, unknown> = {
       name: form.name,
       email: form.email,
@@ -246,12 +293,13 @@ export default function Members() {
       role: form.role,
       joinedAt: form.joinedAt,
       clubeLtc: form.clubeLtc,
-      feeOverride: overrideRaw ? feeOverride : null,
+      chiefChild: form.discountKind === "chief_child",
+      siblingIds: form.discountKind === "siblings" ? form.siblingIds : [],
       monthlyFee: onTimeMonthlyFee({
         branch: form.branch,
         role: form.role,
         clubeLtc: form.clubeLtc,
-        feeOverride: overrideRaw ? feeOverride : null,
+        feeOverride,
       }),
     };
     if (form.role === "jovem") {
@@ -503,7 +551,13 @@ export default function Members() {
                         <td className="num">
                           {paysMensalidade(m) && m.monthlyFee ? brl(m.monthlyFee) : "Não paga"}
                           {paysMensalidade(m) && resolveFeeOverride(m) != null ? (
-                            <div className="muted">valor especial</div>
+                            <div className="muted">
+                              {m.chiefChild
+                                ? "filho de chefe"
+                                : (m.siblingIds ?? []).length
+                                  ? "irmão no grupo"
+                                  : "valor especial"}
+                            </div>
                           ) : null}
                           {paysMensalidade(m) &&
                           resolveFeeOverride(m) == null &&
@@ -632,9 +686,10 @@ export default function Members() {
                     if (!paysMensalidade(form)) {
                       return "Dirigentes, escotistas e o Clube da Flor de Lis não pagam mensalidade.";
                     }
-                    const override = form.feeOverride.trim() ? parseMoney(form.feeOverride) : null;
-                    if (override != null && override >= 0) {
-                      return `Valor especial fixo a partir de maio: ${brl(override)}. Março/abril seguem a tabela antiga (R$ 60 / R$ 15).`;
+                    if (form.discountKind !== "none") {
+                      const reason =
+                        form.discountKind === "chief_child" ? "filho de chefe" : "irmão(s) no grupo";
+                      return `Valor especial (${reason}): ${brl(SPECIAL_FAMILY_FEE)} a partir de maio. Março/abril seguem a tabela antiga (R$ 60 / R$ 15).`;
                     }
                     const amounts = tableAmounts(form.branch, form.clubeLtc, form.role);
                     if (form.clubeLtc) {
@@ -647,20 +702,98 @@ export default function Members() {
                 </small>
               </label>
               <label className="field">
-                <span>Valor especial (opcional)</span>
-                <input
-                  inputMode="decimal"
-                  placeholder="Ex.: 82,00"
-                  value={form.feeOverride}
+                <span>Desconto familiar</span>
+                <select
+                  value={form.discountKind}
                   disabled={!paysMensalidade(form)}
-                  onChange={(e) =>
-                    setForm((current) => withTableFee({ ...current, feeOverride: maskMoney(e.target.value) }))
-                  }
-                />
-                <small className="muted">
-                  Filho de chefe ou irmão no grupo: informe R$ 82,00. Deixe vazio para usar a tabela oficial.
-                </small>
+                  onChange={(e) => {
+                    const discountKind = e.target.value as DiscountKind;
+                    setSiblingQuery("");
+                    setForm((current) =>
+                      withTableFee({
+                        ...current,
+                        discountKind,
+                        siblingIds: discountKind === "siblings" ? current.siblingIds : [],
+                      }),
+                    );
+                  }}
+                >
+                  <option value="none">Tabela oficial</option>
+                  <option value="chief_child">Filho de chefe (R$ 82)</option>
+                  <option value="siblings">Irmão(s) no grupo (R$ 82)</option>
+                </select>
+                <small className="muted">Só uma opção: filho de chefe ou irmãos — não as duas.</small>
               </label>
+              {form.discountKind === "siblings" && paysMensalidade(form) ? (
+                <div className="wide field">
+                  <span>Irmãos associados</span>
+                  <input
+                    type="search"
+                    placeholder="Buscar associado pelo nome…"
+                    value={siblingQuery}
+                    onChange={(e) => setSiblingQuery(e.target.value)}
+                    autoComplete="off"
+                  />
+                  {siblingCandidates.selected.length ? (
+                    <div className="sibling-picker sibling-picker--selected">
+                      <p className="muted sibling-picker__label">Vinculados</p>
+                      {siblingCandidates.selected.map((item) => (
+                        <label key={item.id} className="sibling-picker__item">
+                          <input
+                            type="checkbox"
+                            checked
+                            onChange={() => {
+                              setForm((current) =>
+                                withTableFee({
+                                  ...current,
+                                  discountKind: "siblings",
+                                  siblingIds: current.siblingIds.filter((id) => id !== item.id),
+                                }),
+                              );
+                            }}
+                          />
+                          <span>
+                            {item.name} · {BRANCH_LABELS[item.branch]}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  ) : null}
+                  <div className="sibling-picker">
+                    {siblingCandidates.eligible.length === 0 ? (
+                      <p className="muted">Cadastre outro jovem associado para vincular como irmão.</p>
+                    ) : !siblingCandidates.ready ? (
+                      <p className="muted">Digite ao menos 2 letras do nome para buscar.</p>
+                    ) : siblingCandidates.matches.length === 0 ? (
+                      <p className="muted">Nenhum associado encontrado com “{siblingCandidates.term}”.</p>
+                    ) : (
+                      siblingCandidates.matches.map((item) => (
+                        <label key={item.id} className="sibling-picker__item">
+                          <input
+                            type="checkbox"
+                            checked={false}
+                            onChange={() => {
+                              setForm((current) =>
+                                withTableFee({
+                                  ...current,
+                                  discountKind: "siblings",
+                                  siblingIds: [...current.siblingIds, item.id],
+                                }),
+                              );
+                            }}
+                          />
+                          <span>
+                            {item.name} · {BRANCH_LABELS[item.branch]}
+                          </span>
+                        </label>
+                      ))
+                    )}
+                  </div>
+                  <small className="muted">
+                    Busque e marque o irmão (ou irmãos). O vínculo é bidirecional e aplica R$ 82 nos dois.
+                  </small>
+                </div>
+              ) : null}
               <label className="field">
                 <span>Data de cadastro</span>
                 <input

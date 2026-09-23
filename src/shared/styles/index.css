@@ -829,6 +829,10 @@ table.data th {
   white-space: nowrap;
 }
 
+table.data th.num {
+  text-align: right;
+}
+
 table.data td {
   padding: 12px;
   border-bottom: 1px solid rgba(12, 45, 107, 0.08);
@@ -957,6 +961,17 @@ table.data tr.is-overdue td {
   z-index: 1;
   background: var(--white);
   box-shadow: 8px 0 12px rgba(7, 26, 66, 0.04);
+}
+
+.fees-grid__member {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.fees-grid__member .branch-dot {
+  margin-top: 6px;
+  flex-shrink: 0;
 }
 
 .fees-grid thead .fees-grid__name {
@@ -1791,6 +1806,39 @@ table.data select {
   display: flex;
   flex-wrap: wrap;
   gap: 10px 16px;
+}
+
+.sibling-picker {
+  display: grid;
+  gap: 8px;
+  max-height: 220px;
+  overflow: auto;
+  margin-top: 6px;
+  padding: 4px 2px;
+}
+
+.sibling-picker--selected {
+  max-height: none;
+  margin-top: 10px;
+  margin-bottom: 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line, #d9d2c4);
+}
+
+.sibling-picker__label {
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+.sibling-picker__item {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.9rem;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--ink);
+  font-weight: 500;
 }
 
 .check-row label {
