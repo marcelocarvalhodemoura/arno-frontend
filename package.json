@@ -7,8 +7,11 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css,json,md}\"",
     "test:unit": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "precommit": "lint-staged && npm run test:unit",
+    "prepare": "husky"
   },
   "dependencies": {
     "framer-motion": "^12.23.22",
@@ -24,8 +27,14 @@
     "@types/react": "^19.1.16",
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^5.0.4",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
+    "prettier": "^3.9.9",
     "typescript": "~5.9.3",
     "vite": "npm:rolldown-vite@7.1.14",
     "vitest": "^3.2.4"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx,json,md,yml,yaml,css,html}": "prettier --write"
   }
 }

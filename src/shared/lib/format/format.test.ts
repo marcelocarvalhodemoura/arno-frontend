@@ -51,6 +51,7 @@ describe("labels", () => {
     expect(settlementLabel("paid")).toBe("Pago");
     expect(settlementLabel("pending")).toBe("Pendente");
     expect(settlementLabel("overdue")).toBe("Vencido");
+    expect(settlementLabel("none")).toBe("—");
     expect(dueDateOf({ date: "2026-08-10", movementType: { name: "Mensalidade" } })).toBe("2026-08-10");
     expect(dueDateOf({ date: "2026-08-10", movementType: { name: "Doação" } })).toBe("");
     expect(paidDateOf({ date: "2026-08-10", movementType: { name: "Doação" } })).toBe("2026-08-10");

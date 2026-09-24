@@ -995,10 +995,33 @@ table.data.report-balance > tbody > tr > td.num {
 
 .split-hint {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin-top: 6px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(75, 163, 227, 0.08);
+  border: 1px solid rgba(75, 163, 227, 0.18);
+}
+
+.split-hint__detail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  color: var(--ink);
+}
+
+.split-amount-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: 2px;
+  font-weight: 400;
+  font-size: 0.72rem;
+  line-height: 1.25;
 }
 
 .split-part {
@@ -1009,6 +1032,173 @@ table.data.report-balance > tbody > tr > td.num {
 .split-part:first-of-type {
   border-top: none;
   padding-top: 0;
+}
+
+tr.tx-split-group td {
+  position: relative;
+  z-index: 3;
+  transition:
+    background-color 0.4s var(--ease),
+    box-shadow 0.45s var(--ease),
+    border-color 0.35s var(--ease),
+    transform 0.45s var(--ease);
+}
+
+/* Sanfona aberta: linha-pai em “relevo” 3D, mantendo a cor de status (pago/pendente/atrasado) */
+tr.tx-split-group.is-expanded {
+  position: relative;
+  z-index: 5;
+}
+
+tr.tx-split-group.is-expanded td {
+  border-bottom-color: transparent;
+  transform: translateY(-2px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.65),
+    inset 0 -1px 0 rgba(7, 26, 66, 0.06),
+    0 2px 0 rgba(255, 255, 255, 0.35),
+    0 10px 18px -8px rgba(7, 26, 66, 0.35),
+    0 22px 36px -14px rgba(7, 26, 66, 0.28);
+}
+
+tr.tx-split-group.is-expanded td:first-child {
+  border-top-left-radius: 10px;
+  border-bottom-left-radius: 10px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.65),
+    inset 0 -1px 0 rgba(7, 26, 66, 0.06),
+    0 2px 0 rgba(255, 255, 255, 0.35),
+    0 10px 18px -8px rgba(7, 26, 66, 0.35),
+    0 22px 36px -14px rgba(7, 26, 66, 0.28),
+    -2px 0 0 rgba(7, 26, 66, 0.04);
+}
+
+tr.tx-split-group.is-expanded td:last-child {
+  border-top-right-radius: 10px;
+  border-bottom-right-radius: 10px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.65),
+    inset 0 -1px 0 rgba(7, 26, 66, 0.06),
+    0 2px 0 rgba(255, 255, 255, 0.35),
+    0 10px 18px -8px rgba(7, 26, 66, 0.35),
+    0 22px 36px -14px rgba(7, 26, 66, 0.28),
+    2px 0 0 rgba(7, 26, 66, 0.04);
+}
+
+table.data tr.tx-split-group.is-expanded.is-paid td {
+  background: rgba(45, 138, 78, 0.16);
+}
+
+table.data tr.tx-split-group.is-expanded.is-pending td {
+  background: rgba(232, 180, 35, 0.2);
+}
+
+table.data tr.tx-split-group.is-expanded.is-overdue td {
+  background: rgba(200, 16, 46, 0.16);
+}
+
+table.data tr.tx-split-group.is-expanded.is-paid:hover td {
+  background: rgba(45, 138, 78, 0.22);
+}
+
+table.data tr.tx-split-group.is-expanded.is-pending:hover td {
+  background: rgba(232, 180, 35, 0.26);
+}
+
+table.data tr.tx-split-group.is-expanded.is-overdue:hover td {
+  background: rgba(200, 16, 46, 0.2);
+}
+
+.tx-split-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.tx-split-toggle__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.tx-split-chevron {
+  flex: 0 0 auto;
+  margin-top: 4px;
+  transition: transform 0.55s var(--ease);
+  color: #0c2d6b;
+}
+
+.tx-split-group.is-expanded .tx-split-chevron,
+.tx-split-chevron.is-open {
+  transform: rotate(180deg);
+}
+
+tr.tx-split-part {
+  transform-origin: top center;
+}
+
+.tx-split-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* Partes do rateio: cinza-azulado para diferenciar dos lançamentos soltos abaixo */
+table.data tr.tx-split-part td,
+table.data tr.tx-split-part.is-paid td,
+table.data tr.tx-split-part.is-pending td,
+table.data tr.tx-split-part.is-overdue td {
+  background: linear-gradient(90deg, rgba(90, 95, 106, 0.16), rgba(90, 95, 106, 0.1) 48%, rgba(90, 95, 106, 0.07));
+  color: #1a1d24;
+  position: relative;
+  z-index: 1;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+table.data tr.tx-split-part:hover td,
+table.data tr.tx-split-part.is-paid:hover td,
+table.data tr.tx-split-part.is-pending:hover td,
+table.data tr.tx-split-part.is-overdue:hover td {
+  background: linear-gradient(90deg, rgba(90, 95, 106, 0.22), rgba(90, 95, 106, 0.14) 48%, rgba(90, 95, 106, 0.1));
+}
+
+table.data tr.tx-split-part td:first-child {
+  box-shadow: inset 5px 0 0 #5a5f6a;
+  padding-left: 18px;
+}
+
+table.data tr.tx-split-part td:nth-child(3) {
+  padding-left: 22px;
+}
+
+.tx-split-part__label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+table.data tr.tx-split-part:last-of-type td {
+  box-shadow: inset 0 -8px 14px rgba(26, 29, 36, 0.05);
+}
+
+table.data tr.tx-split-part:last-of-type td:first-child {
+  box-shadow:
+    inset 5px 0 0 #5a5f6a,
+    inset 0 -8px 14px rgba(26, 29, 36, 0.05);
 }
 
 .fees-grid {
@@ -1981,16 +2171,13 @@ table.data select {
   color: inherit;
 }
 
-.guide .accordion__toggle {
-  font-family: var(--font-display);
-  font-weight: 700;
-  color: var(--forest);
-  font-size: 1.02rem;
+.accordion__title {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
-.guide .accordion__toggle::after {
-  content: "Mostrar";
-  margin-left: auto;
+.accordion__hint {
+  flex: 0 0 auto;
   font-family: var(--font-body);
   font-size: 0.72rem;
   font-weight: 600;
@@ -1999,19 +2186,49 @@ table.data select {
   color: var(--clay);
   transition:
     color 0.28s var(--ease),
-    transform 0.34s var(--ease);
+    opacity 0.28s var(--ease);
 }
 
-.guide.is-open .accordion__toggle::after {
-  content: "Recolher";
+.accordion.is-open .accordion__hint {
+  color: var(--forest);
+}
+
+.accordion__chevron {
+  flex: 0 0 auto;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+  color: var(--forest);
+  opacity: 0.75;
+  margin-bottom: 0.2rem;
+  transition:
+    transform 0.4s var(--ease),
+    opacity 0.28s var(--ease);
+}
+
+.accordion.is-open .accordion__chevron {
+  transform: rotate(225deg);
+  margin-bottom: 0;
+  margin-top: 0.2rem;
+  opacity: 1;
+}
+
+.guide .accordion__toggle {
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: var(--forest);
+  font-size: 1.02rem;
 }
 
 .accordion__panel {
   overflow: hidden;
+  will-change: height, opacity;
 }
 
 .guide .accordion__body {
-  padding-top: 4px;
+  padding-top: 8px;
 }
 
 .guide p,

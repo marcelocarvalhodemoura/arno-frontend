@@ -32,4 +32,12 @@ A API do `arno-backend` precisa estar em `http://127.0.0.1:4000` (ou o valor de 
 npm run test:unit
 npm run build
 ```
-# arno-frontend
+
+## Pre-commit
+
+O hook do Husky roda no `git commit`: Prettier nos arquivos staged (`lint-staged`) e em seguida `npm run test:unit`.
+
+```bash
+npm run prepare   # ativa o hook (já roda no npm install)
+npm run precommit # mesmo fluxo, manualmente
+```

@@ -16,6 +16,26 @@ export function buildSplitPartDescription(input: {
   return `${base} · ${partLabel} · ${moneyLabel}`;
 }
 
+export type SplitPeerSummary = {
+  id: string;
+  amount: number;
+  splitIndex?: number;
+  memberName?: string | null;
+  description: string;
+};
+
+/** Texto curto listando para quem foi cada parte do rateio. */
+export function formatSplitBeneficiaries(peers: SplitPeerSummary[]): string {
+  if (!peers.length) return "";
+  const sorted = [...peers].sort((a, b) => (a.splitIndex ?? 0) - (b.splitIndex ?? 0));
+  return sorted
+    .map((peer) => {
+      const who = peer.memberName?.trim() || "sem associado";
+      return `${who} (${formatBrl(peer.amount)})`;
+    })
+    .join(" · ");
+}
+
 function formatBrl(value: number): string {
   return `R$ ${value.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }

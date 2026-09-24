@@ -27,8 +27,17 @@ import SubmitButton from "@/shared/ui/SubmitButton";
 import FilterBar from "@/shared/ui/FilterBar";
 import Pager from "@/shared/ui/Pager";
 import IconButton from "@/shared/ui/IconButton";
-import { AnimatePresence } from "framer-motion";
-import { FaBroadcastTower, FaCheck, FaClock, FaPen, FaTag, FaTrashAlt, FaCodeBranch } from "react-icons/fa";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import {
+  FaBroadcastTower,
+  FaCheck,
+  FaChevronDown,
+  FaClock,
+  FaPen,
+  FaTag,
+  FaTrashAlt,
+  FaCodeBranch,
+} from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/shared/feedback/toast";
 import { api } from "@/core/http";
@@ -49,11 +58,13 @@ import {
 import { formatMoney, maskMoney, parseMoney } from "@/shared/lib/masks";
 import { formClass, submitAttempt } from "@/shared/lib/form";
 import { matchesQuery, usePagedList } from "@/shared/lib/listing";
+import { duration, ease } from "@/shared/lib/motion";
 import { dateInPeriod, periodRange, usePeriod } from "@/shared/lib/period";
 import { useFetch } from "@/shared/hooks/use-fetch";
 import { isMensalidadeName, isUnidentifiedName, natureForTypeName } from "@/domain/movement";
 import { clearIdentifyFlag, readIdentifyFlag } from "@/core/session/identify-flag";
 import { buildSplitPartDescription } from "@/features/cash-flow/split-description";
+import { buildCashFlowDisplayRows, splitGroupLabel } from "@/features/cash-flow/split-display";
 
 type Flow = {
   opening: number;
@@ -127,10 +138,16 @@ export default function CashFlow() {
   const [branchFilter, setBranchFilter] = useState<BranchId | "">("");
   const [movementFilter, setMovementFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<"paid" | "pending" | "overdue" | "">("");
+  const [dueDateFilter, setDueDateFilter] = useState("");
+  const [paidDateFilter, setPaidDateFilter] = useState("");
+  const [rateioFilter, setRateioFilter] = useState<"" | "yes" | "no">("");
   const [saving, setSaving] = useState(false);
   const [attempted, setAttempted] = useState(false);
   const [splitting, setSplitting] = useState<TxView | null>(null);
+  const [splitEditing, setSplitEditing] = useState(false);
   const [splitParts, setSplitParts] = useState<SplitPartDraft[]>([]);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set());
+  const reduceMotion = useReducedMotion();
 
   const unidentifiedTypeIds = useMemo(
     () => new Set((types.data ?? []).filter((item) => isUnidentifiedName(item.name)).map((item) => item.id)),
@@ -138,20 +155,37 @@ export default function CashFlow() {
   );
   const wantsUnidentified = movementFilter === "__unidentified__" || unidentifiedTypeIds.has(movementFilter);
 
-  const filtered = useMemo(() => {
+  const periodSource = useMemo(() => {
+    return wantsUnidentified && month ? (yearTxs.data ?? txs.data ?? []) : (txs.data ?? []);
+  }, [wantsUnidentified, month, yearTxs.data, txs.data]);
+
+  const txById = useMemo(() => {
+    const map = new Map<string, TxView>();
+    for (const tx of periodSource) map.set(tx.id, tx);
+    return map;
+  }, [periodSource]);
+
+  const matchedIds = useMemo(() => {
     const term = query.trim().toLowerCase();
-    const source = wantsUnidentified && month ? (yearTxs.data ?? txs.data ?? []) : (txs.data ?? []);
-    return source.filter((t) => {
-      if (typeFilter && t.type !== typeFilter) return false;
-      if (natureFilter && t.nature !== natureFilter) return false;
-      if (branchFilter && t.branch !== branchFilter) return false;
+    const ids = new Set<string>();
+    for (const t of periodSource) {
+      if (typeFilter && t.type !== typeFilter) continue;
+      if (natureFilter && t.nature !== natureFilter) continue;
+      if (branchFilter && t.branch !== branchFilter) continue;
       if (wantsUnidentified) {
-        if (!isUnidentifiedName(t.movementType?.name)) return false;
+        if (!isUnidentifiedName(t.movementType?.name)) continue;
       } else if (movementFilter && t.movementTypeId !== movementFilter) {
-        return false;
+        continue;
       }
       const settlement = settlementOf(t.paymentStatus, t.date);
-      if (statusFilter && settlement !== statusFilter) return false;
+      if (statusFilter && settlement !== statusFilter) continue;
+      if (dueDateFilter && dueDateOf(t) !== dueDateFilter) continue;
+      if (paidDateFilter) {
+        const paid = paidDateOf(t);
+        if (!paid || paid !== paidDateFilter) continue;
+      }
+      if (rateioFilter === "yes" && !t.splitGroupId) continue;
+      if (rateioFilter === "no" && t.splitGroupId) continue;
       if (term) {
         if (
           !matchesQuery(term, [
@@ -170,23 +204,65 @@ export default function CashFlow() {
             paidDateOf(t),
           ])
         ) {
-          return false;
+          continue;
         }
       }
-      return true;
-    });
+      ids.add(t.id);
+    }
+    return ids;
   }, [
-    txs.data,
-    yearTxs.data,
-    month,
+    periodSource,
     query,
     typeFilter,
     natureFilter,
     branchFilter,
     movementFilter,
     statusFilter,
+    dueDateFilter,
+    paidDateFilter,
+    rateioFilter,
     wantsUnidentified,
   ]);
+
+  const displayRows = useMemo(() => {
+    const searchActive = Boolean(query.trim());
+    return buildCashFlowDisplayRows(
+      periodSource.map((t) => ({
+        id: t.id,
+        splitGroupId: t.splitGroupId,
+        splitTotal: t.splitTotal,
+        splitIndex: t.splitIndex,
+        splitCount: t.splitCount,
+        amount: t.amount,
+        type: t.type,
+        date: t.date,
+        paidAt: t.paidAt,
+        description: t.description,
+        memberName: t.member?.name ?? null,
+        movementTypeName: t.movementType?.name ?? null,
+      })),
+      matchedIds,
+      searchActive,
+    );
+  }, [periodSource, matchedIds, query]);
+
+  useEffect(() => {
+    const forced = displayRows
+      .filter((row): row is Extract<typeof row, { kind: "split" }> => row.kind === "split" && row.forceExpand)
+      .map((row) => row.groupId);
+    if (!forced.length) return;
+    setExpandedGroups((current) => {
+      const next = new Set(current);
+      let changed = false;
+      for (const id of forced) {
+        if (!next.has(id)) {
+          next.add(id);
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [displayRows]);
 
   const unidentified = useMemo(() => {
     const source = month ? (yearTxs.data ?? []) : (txs.data ?? []);
@@ -211,7 +287,7 @@ export default function CashFlow() {
   }, [types.data, identifying]);
 
   const listing = usePagedList(
-    filtered,
+    displayRows,
     [
       query,
       typeFilter,
@@ -219,11 +295,23 @@ export default function CashFlow() {
       branchFilter,
       movementFilter,
       statusFilter,
+      dueDateFilter,
+      paidDateFilter,
+      rateioFilter,
       from,
       to,
       wantsUnidentified ? "year" : "period",
     ].join("|"),
   );
+
+  function toggleSplitGroup(groupId: string) {
+    setExpandedGroups((current) => {
+      const next = new Set(current);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
+      return next;
+    });
+  }
 
   const selectedMember = (members.data ?? []).find((m) => m.id === form.memberId);
   const selectedGuardians = selectedMember?.role === "jovem" ? (selectedMember.guardians ?? []) : [];
@@ -339,7 +427,9 @@ export default function CashFlow() {
     setEditing(tx);
     setForm({
       date: tx.date.slice(0, 10),
-      paidAt: tx.paidAt?.slice(0, 10) || (tx.paymentStatus === "paid" && !isMensalidadeName(tx.movementType?.name) ? tx.date.slice(0, 10) : ""),
+      paidAt:
+        tx.paidAt?.slice(0, 10) ||
+        (tx.paymentStatus === "paid" && !isMensalidadeName(tx.movementType?.name) ? tx.date.slice(0, 10) : ""),
       type: tx.type,
       nature: tx.nature,
       movementTypeId: tx.movementTypeId,
@@ -461,6 +551,7 @@ export default function CashFlow() {
     const half = Math.round((tx.amount / 2) * 100) / 100;
     const rest = Math.round((tx.amount - half) * 100) / 100;
     const amounts = [half, rest];
+    setSplitEditing(false);
     setSplitting(tx);
     setSplitParts(
       amounts.map((amount, index) => ({
@@ -476,6 +567,30 @@ export default function CashFlow() {
           totalAmount: tx.amount,
           memberName: index === 0 ? tx.member?.name : undefined,
         }),
+      })),
+    );
+    setError(null);
+  }
+
+  function openEditSplit(parts: TxView[]) {
+    const sorted = [...parts].sort((a, b) => (a.splitIndex ?? 0) - (b.splitIndex ?? 0) || a.id.localeCompare(b.id));
+    if (sorted.length < 2) return;
+    const primary = sorted.find((item) => item.splitIndex === 1) ?? sorted[0];
+    const total = primary.splitTotal ?? sorted.reduce((sum, item) => sum + item.amount, 0);
+    const baseDescription = splitGroupLabel(sorted);
+    setSplitEditing(true);
+    setSplitting({
+      ...primary,
+      amount: total,
+      description: baseDescription,
+    });
+    setSplitParts(
+      sorted.map((part) => ({
+        amount: formatMoney(part.amount),
+        movementTypeId: part.movementTypeId,
+        memberId: part.memberId ?? "",
+        autoDescription: false,
+        description: part.description,
       })),
     );
     setError(null);
@@ -527,14 +642,42 @@ export default function CashFlow() {
         method: "POST",
         body: JSON.stringify({ parts }),
       });
-      toast.success("Lançamento rateado.");
+      toast.success(splitEditing ? "Rateio atualizado." : "Lançamento rateado.");
       setSplitting(null);
+      setSplitEditing(false);
       void Promise.all([flow.reload(), txs.reload(), yearTxs.reload()]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Não foi possível ratear");
     } finally {
       setSaving(false);
     }
+  }
+
+  async function removeSplitGroup(parts: TxView[]) {
+    if (!confirm(`Excluir este rateio e suas ${parts.length} partes?`)) return;
+    for (const part of parts) {
+      await api(`/transactions/${part.id}`, { method: "DELETE" });
+    }
+    toast.success("Rateio excluído.");
+    await Promise.all([flow.reload(), txs.reload(), yearTxs.reload()]);
+  }
+
+  async function setSplitGroupPaymentStatus(parts: TxView[], paymentStatus: TxPaymentStatus) {
+    await Promise.all(
+      parts.map((part) =>
+        api(`/transactions/${part.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            paymentStatus,
+            paidAt: paymentStatus === "paid" ? todayISO() : null,
+          }),
+        }),
+      ),
+    );
+    toast.success(
+      paymentStatus === "paid" ? "Partes do rateio conciliadas." : "Partes do rateio marcadas como pendentes.",
+    );
+    await Promise.all([flow.reload(), txs.reload(), yearTxs.reload()]);
   }
 
   async function setPaymentStatus(tx: TxView, paymentStatus: TxPaymentStatus) {
@@ -597,6 +740,118 @@ export default function CashFlow() {
     clearIdentifyFlag();
     startIdentifyQueue(unidentified);
   }, [unidentified]);
+
+  function renderTxRow(
+    t: TxView,
+    options: { allowSplit: boolean; nested?: boolean; key?: string; animIndex?: number },
+  ) {
+    const settlement = settlementOf(t.paymentStatus, t.date);
+    const unidentifiedRow = isUnidentifiedName(t.movementType?.name);
+    const dueDate = dueDateOf(t);
+    const paidDate = paidDateOf(t);
+    const RowTag = options.nested ? motion.tr : "tr";
+    const motionProps = options.nested
+      ? reduceMotion
+        ? {
+            initial: { opacity: 0 },
+            animate: { opacity: 1 },
+            exit: { opacity: 0 },
+            transition: { duration: duration.fast },
+          }
+        : {
+            initial: { opacity: 0, y: -22 },
+            animate: { opacity: 1, y: 0 },
+            exit: {
+              opacity: 0,
+              y: -12,
+              transition: { duration: 0.32, ease },
+            },
+            transition: {
+              duration: 0.72,
+              ease,
+              delay: (options.animIndex ?? 0) * 0.09,
+            },
+          }
+      : {};
+    return (
+      <RowTag
+        key={options.key ?? t.id}
+        className={`is-${settlement}${unidentifiedRow ? " is-unidentified" : ""}${options.nested ? " tx-split-part" : ""}`}
+        {...motionProps}
+      >
+        <td>{dueDate ? formatDate(dueDate) : "—"}</td>
+        <td>{paidDate ? formatDate(paidDate) : "—"}</td>
+        <td>
+          {options.nested ? (
+            <div className="tx-split-part__label">
+              <Badge kind="split">
+                Parte {t.splitIndex ?? "?"}
+                {t.splitCount ? `/${t.splitCount}` : ""}
+              </Badge>
+              <strong>{t.description}</strong>
+            </div>
+          ) : (
+            <strong>{t.description}</strong>
+          )}
+          <div className="muted">
+            {t.member ? `${t.member.name} · ` : ""}
+            {t.guardian ? `${t.guardian.name} (${t.guardian.relationship}) · ` : ""}
+            {t.account ? `${t.account.holderName} · ` : ""}
+            {methodLabel(t.method)}
+          </div>
+          <RecordStamp
+            origin={t.origin}
+            createdAt={t.createdAt}
+            createdBy={t.createdByUser}
+            updatedAt={t.updatedAt}
+            updatedBy={t.updatedByUser}
+          />
+        </td>
+        <td>
+          <Badge kind={t.type}>{t.movementType?.name ?? "—"}</Badge>
+        </td>
+        <td>
+          <span className="branch-dot" style={{ background: colorOf(t.branch) }} /> {BRANCH_LABELS[t.branch]}
+        </td>
+        <td>
+          <Badge kind={t.nature}>{natureLabel(t.nature)}</Badge>
+        </td>
+        <td>
+          <Badge kind={settlement}>{settlementLabel(settlement)}</Badge>
+        </td>
+        <td className={`num ${signedClass(t.type === "income" ? t.amount : -t.amount)}`}>
+          {t.type === "income" ? "+" : "−"} {brl(t.amount)}
+        </td>
+        <td className="cell-actions">
+          {unidentifiedRow ? (
+            <IconButton label="Identificar tipo" onClick={() => startIdentifyQueue(unidentified, t.id)}>
+              <FaTag />
+            </IconButton>
+          ) : null}
+          {settlement === "paid" ? (
+            <IconButton label="Marcar como pendente" onClick={() => void setPaymentStatus(t, "pending")}>
+              <FaClock />
+            </IconButton>
+          ) : (
+            <IconButton label="Marcar como pago" tone="success" onClick={() => void setPaymentStatus(t, "paid")}>
+              <FaCheck />
+            </IconButton>
+          )}
+          <IconButton label="Alterar lançamento" onClick={() => openEdit(t)}>
+            <FaPen />
+          </IconButton>
+          {options.allowSplit ? (
+            <IconButton label="Ratear lançamento" onClick={() => openSplit(t)}>
+              <FaCodeBranch />
+            </IconButton>
+          ) : null}
+          <IconButton label="Excluir lançamento" tone="danger" onClick={() => void remove(t.id)}>
+            <FaTrashAlt />
+          </IconButton>
+        </td>
+      </RowTag>
+    );
+  }
 
   const data = flow.data;
   if (!data) {
@@ -730,6 +985,22 @@ export default function CashFlow() {
                 <option value="overdue">Vencido</option>
               </select>
             </label>
+            <label className="field">
+              <span>Vencimento</span>
+              <input type="date" value={dueDateFilter} onChange={(e) => setDueDateFilter(e.target.value)} />
+            </label>
+            <label className="field">
+              <span>Pagamento</span>
+              <input type="date" value={paidDateFilter} onChange={(e) => setPaidDateFilter(e.target.value)} />
+            </label>
+            <label className="field">
+              <span>Com rateio</span>
+              <select value={rateioFilter} onChange={(e) => setRateioFilter(e.target.value as "" | "yes" | "no")}>
+                <option value="">Todos</option>
+                <option value="yes">Sim</option>
+                <option value="no">Não</option>
+              </select>
+            </label>
           </FilterBar>
           {month && wantsUnidentified ? (
             <p className="muted" style={{ margin: "-4px 0 12px" }}>
@@ -761,98 +1032,130 @@ export default function CashFlow() {
                       </td>
                     </tr>
                   ) : (
-                    listing.pageRows.map((t) => {
-                      const settlement = settlementOf(t.paymentStatus, t.date);
-                      const unidentifiedRow = isUnidentifiedName(t.movementType?.name);
-                      const dueDate = dueDateOf(t);
-                      const paidDate = paidDateOf(t);
-                      return (
-                        <tr key={t.id} className={`is-${settlement}${unidentifiedRow ? " is-unidentified" : ""}`}>
-                          <td>{dueDate ? formatDate(dueDate) : "—"}</td>
-                          <td>{paidDate ? formatDate(paidDate) : "—"}</td>
-                          <td>
-                            <strong>{t.description}</strong>
-                            <div className="muted">
-                              {t.member ? `${t.member.name} · ` : ""}
-                              {t.guardian ? `${t.guardian.name} (${t.guardian.relationship}) · ` : ""}
-                              {t.account ? `${t.account.holderName} · ` : ""}
-                              {methodLabel(t.method)}
-                            </div>
-                            {t.splitGroupId && t.splitTotal != null && t.splitIndex != null && t.splitCount != null ? (
-                              <div className="split-hint">
-                                <Badge kind="split">
-                                  Rateio {t.splitIndex}/{t.splitCount}
-                                </Badge>
-                                <span className="muted">
-                                  Parte de {brl(t.splitTotal)} · as outras partes aparecem como linhas separadas
+                    <AnimatePresence initial={false}>
+                      {listing.pageRows.flatMap((row) => {
+                        if (row.kind === "single") {
+                          const t = txById.get(row.txId);
+                          if (!t) return [];
+                          return [renderTxRow(t, { allowSplit: true })];
+                        }
+
+                        const parts = row.partIds
+                          .map((id) => txById.get(id))
+                          .filter((item): item is TxView => Boolean(item));
+                        if (!parts.length) return [];
+                        const expanded = expandedGroups.has(row.groupId);
+                        const headSettlement = settlementOf(parts[0].paymentStatus, parts[0].date);
+                        const allPaid = parts.every((part) => settlementOf(part.paymentStatus, part.date) === "paid");
+                        const dueDate = dueDateOf(parts[0]);
+                        const paidDate = paidDateOf(parts[0]);
+                        const mixedTypes = new Set(parts.map((p) => p.movementType?.name).filter(Boolean));
+                        const typeLabelText =
+                          mixedTypes.size === 1 ? ([...mixedTypes][0] as string) : `${row.partCount} partes`;
+
+                        const head = (
+                          <tr
+                            key={row.id}
+                            className={`is-${headSettlement} tx-split-group${expanded ? " is-expanded" : ""}`}
+                          >
+                            <td>{dueDate ? formatDate(dueDate) : "—"}</td>
+                            <td>{paidDate ? formatDate(paidDate) : "—"}</td>
+                            <td>
+                              <button
+                                type="button"
+                                className="tx-split-toggle"
+                                aria-expanded={expanded}
+                                onClick={() => toggleSplitGroup(row.groupId)}
+                              >
+                                <FaChevronDown className="tx-split-chevron" aria-hidden />
+                                <span className="tx-split-toggle__text">
+                                  <strong>{row.label}</strong>
+                                  <span className="muted">
+                                    {methodLabel(parts[0].method)}
+                                    {parts[0].account ? ` · ${parts[0].account.holderName}` : ""}
+                                  </span>
                                 </span>
+                              </button>
+                              <div className="tx-split-summary">
+                                <Badge kind="split">
+                                  Rateio · {row.partCount} {row.partCount === 1 ? "parte" : "partes"}
+                                </Badge>
+                                {row.beneficiaries ? (
+                                  <span className="muted">Para: {row.beneficiaries}</span>
+                                ) : (
+                                  <span className="muted">Abra para ver cada emissão do rateio</span>
+                                )}
                               </div>
-                            ) : null}
-                            <RecordStamp
-                              origin={t.origin}
-                              createdAt={t.createdAt}
-                              createdBy={t.createdByUser}
-                              updatedAt={t.updatedAt}
-                              updatedBy={t.updatedByUser}
-                            />
-                          </td>                          <td>
-                            <Badge kind={t.type}>{t.movementType?.name ?? "—"}</Badge>
-                          </td>
-                          <td>
-                            <span className="branch-dot" style={{ background: colorOf(t.branch) }} />{" "}
-                            {BRANCH_LABELS[t.branch]}
-                          </td>
-                          <td>
-                            <Badge kind={t.nature}>{natureLabel(t.nature)}</Badge>
-                          </td>
-                          <td>
-                            <Badge kind={settlement}>{settlementLabel(settlement)}</Badge>
-                          </td>
-                          <td className={`num ${signedClass(t.type === "income" ? t.amount : -t.amount)}`}>
-                            {t.type === "income" ? "+" : "−"} {brl(t.amount)}
-                            {t.splitGroupId && t.splitTotal != null ? (
-                              <div className="muted" style={{ fontWeight: 400, fontSize: "0.75rem" }}>
-                                de {brl(t.splitTotal)}
-                              </div>
-                            ) : null}
-                          </td>                          <td className="cell-actions">
-                            {unidentifiedRow ? (
+                            </td>
+                            <td>
+                              <Badge kind={row.type}>{typeLabelText}</Badge>
+                            </td>
+                            <td>
+                              <span className="branch-dot" style={{ background: colorOf(parts[0].branch) }} />{" "}
+                              {BRANCH_LABELS[parts[0].branch]}
+                            </td>
+                            <td>
+                              <Badge kind={parts[0].nature}>{natureLabel(parts[0].nature)}</Badge>
+                            </td>
+                            <td>
+                              <Badge kind={headSettlement}>{settlementLabel(headSettlement)}</Badge>
+                            </td>
+                            <td className={`num ${signedClass(row.type === "income" ? row.total : -row.total)}`}>
+                              {row.type === "income" ? "+" : "−"} {brl(row.total)}
+                              <div className="split-amount-meta muted">crédito original</div>
+                            </td>
+                            <td className="cell-actions">
                               <IconButton
-                                label="Identificar tipo"
-                                onClick={() => startIdentifyQueue(unidentified, t.id)}
+                                label={expanded ? "Recolher rateio" : "Ver partes do rateio"}
+                                onClick={() => toggleSplitGroup(row.groupId)}
                               >
-                                <FaTag />
+                                <FaChevronDown className={`tx-split-chevron${expanded ? " is-open" : ""}`} />
                               </IconButton>
-                            ) : null}
-                            {settlement === "paid" ? (
+                              {allPaid ? (
+                                <IconButton
+                                  label="Marcar partes como pendentes"
+                                  onClick={() => void setSplitGroupPaymentStatus(parts, "pending")}
+                                >
+                                  <FaClock />
+                                </IconButton>
+                              ) : (
+                                <IconButton
+                                  label="Marcar partes como pagas"
+                                  tone="success"
+                                  onClick={() => void setSplitGroupPaymentStatus(parts, "paid")}
+                                >
+                                  <FaCheck />
+                                </IconButton>
+                              )}
+                              <IconButton label="Alterar rateio" onClick={() => openEditSplit(parts)}>
+                                <FaCodeBranch />
+                              </IconButton>
                               <IconButton
-                                label="Marcar como pendente"
-                                onClick={() => void setPaymentStatus(t, "pending")}
+                                label="Excluir rateio"
+                                tone="danger"
+                                onClick={() => void removeSplitGroup(parts)}
                               >
-                                <FaClock />
+                                <FaTrashAlt />
                               </IconButton>
-                            ) : (
-                              <IconButton
-                                label="Marcar como pago"
-                                tone="success"
-                                onClick={() => void setPaymentStatus(t, "paid")}
-                              >
-                                <FaCheck />
-                              </IconButton>
-                            )}
-                            <IconButton label="Alterar lançamento" onClick={() => openEdit(t)}>
-                              <FaPen />
-                            </IconButton>
-                            <IconButton label="Ratear lançamento" onClick={() => openSplit(t)}>
-                              <FaCodeBranch />
-                            </IconButton>
-                            <IconButton label="Excluir lançamento" tone="danger" onClick={() => void remove(t.id)}>
-                              <FaTrashAlt />
-                            </IconButton>
-                          </td>
-                        </tr>
-                      );
-                    })
+                            </td>
+                          </tr>
+                        );
+
+                        if (!expanded) return [head];
+
+                        return [
+                          head,
+                          ...parts.map((t, index) =>
+                            renderTxRow(t, {
+                              allowSplit: false,
+                              nested: true,
+                              key: `${row.groupId}:${t.id}`,
+                              animIndex: index,
+                            }),
+                          ),
+                        ];
+                      })}
+                    </AnimatePresence>
                   )}
                 </tbody>
               </table>
@@ -1217,13 +1520,20 @@ export default function CashFlow() {
           </Modal>
         ) : null}
         {splitting ? (
-          <Modal title="Ratear lançamento" onClose={() => setSplitting(null)}>
+          <Modal
+            title={splitEditing ? "Alterar rateio" : "Ratear lançamento"}
+            onClose={() => {
+              setSplitting(null);
+              setSplitEditing(false);
+            }}
+          >
             <form onSubmit={(event) => void saveSplit(event)} className={formClass("form-grid", attempted)} noValidate>
               {error ? <div className="error wide">{error}</div> : null}
               <p className="muted wide">
                 {formatDate(splitting.date)} · total {brl(splitting.amount)} · {splitting.description}. Cada parte vira
-                um lançamento; a soma precisa ser exatamente o total. Escolha o associado (filho) em cada parte quando o
-                crédito for de mais de um jovem.
+                um lançamento; a soma precisa ser exatamente o total. Em mensalidade de irmãos, escolha o{" "}
+                <strong>associado</strong> em cada parte — o fluxo de caixa mostra o valor original e para quem foi o
+                rateio.
               </p>
               {splitParts.map((part, index) => (
                 <div key={index} className="wide form-grid split-part">
@@ -1279,9 +1589,7 @@ export default function CashFlow() {
                       required
                       minLength={2}
                       value={part.description}
-                      onChange={(e) =>
-                        updateSplitPart(index, { description: e.target.value, autoDescription: false })
-                      }
+                      onChange={(e) => updateSplitPart(index, { description: e.target.value, autoDescription: false })}
                     />
                   </label>
                 </div>
@@ -1309,11 +1617,19 @@ export default function CashFlow() {
                 >
                   Outra parte
                 </button>
-                <button className="btn btn-ghost" type="button" onClick={() => setSplitting(null)} disabled={saving}>
+                <button
+                  className="btn btn-ghost"
+                  type="button"
+                  onClick={() => {
+                    setSplitting(null);
+                    setSplitEditing(false);
+                  }}
+                  disabled={saving}
+                >
                   Cancelar
                 </button>
-                <SubmitButton busy={saving} busyLabel="Rateando…">
-                  Ratear
+                <SubmitButton busy={saving} busyLabel={splitEditing ? "Salvando…" : "Rateando…"}>
+                  {splitEditing ? "Salvar rateio" : "Ratear"}
                 </SubmitButton>
               </div>
             </form>

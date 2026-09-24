@@ -18,9 +18,9 @@ export default function IdentifyPaymentsGuide({ defaultOpen = false }: Props) {
         </li>
         <li>
           <strong>Um PIX com a soma.</strong> Só funciona com um pedido antes (ex.: 60 + 70 + 20 = 150). O crédito de
-          150 entra uma vez no caixa e parte em três lançamentos — cada linha mostra o valor da parte e o total
-          original (badge <em>Rateio</em>). Sem pedido, vira crédito sem rubrica até o tesoureiro usar{" "}
-          <strong>Ratear</strong> no fluxo de caixa e, se for de irmãos, indicar o associado em cada parte.
+          150 entra uma vez no caixa. Ao <strong>Ratear</strong>, vira uma linha em sanfona com o valor original; ao
+          abrir, aparecem as partes (associado, rubrica e valor). Sem pedido, fica crédito sem rubrica até o tesoureiro
+          ratear e, se for de irmãos, indicar o associado em cada parte.
         </li>
         <li>
           <strong>Cartão de crédito.</strong> O Sicredi quase nunca traz o nome do associado. A maquininha liquida

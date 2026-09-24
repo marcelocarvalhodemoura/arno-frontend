@@ -22,8 +22,9 @@ export function paidDateOf(tx: {
   return "";
 }
 
-export function settlementLabel(kind: TxSettlement): string {
+export function settlementLabel(kind: TxSettlement | "none"): string {
   if (kind === "paid") return "Pago";
   if (kind === "overdue") return "Vencido";
+  if (kind === "none") return "—";
   return "Pendente";
 }
