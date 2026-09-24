@@ -467,56 +467,66 @@ export default function Reports() {
               </label>
             </FilterBar>
             <ListingResults fetching={busy} filtering={summaryListing.busy} fetchLabel="Gerando relatório…">
-              <table className="data report-summary">
-                <caption className="print-only">Síntese por {GROUP_BY_LABELS[groupBy].toLowerCase()}</caption>
-                <thead>
-                  <tr>
-                    <th>{groupBy === "none" ? "Descrição" : "Grupo"}</th>
-                    <th className="num">Entradas</th>
-                    <th className="num">Saídas</th>
-                    <th className="num">Líquido</th>
-                    <th className="num">Qtd.</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {summaryPrintRows.length === 0 ? (
+              <div className="table-wrap">
+                <table className="data report-summary">
+                  <caption className="print-only">Síntese por {GROUP_BY_LABELS[groupBy].toLowerCase()}</caption>
+                  <thead>
                     <tr>
-                      <td colSpan={5} className="muted">
-                        Nenhum grupo com esses filtros.
+                      <th scope="col">{groupBy === "none" ? "Descrição" : "Grupo"}</th>
+                      <th scope="col" className="num">
+                        Entradas
+                      </th>
+                      <th scope="col" className="num">
+                        Saídas
+                      </th>
+                      <th scope="col" className="num">
+                        Líquido
+                      </th>
+                      <th scope="col" className="num">
+                        Qtd.
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {summaryPrintRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="muted">
+                          Nenhum grupo com esses filtros.
+                        </td>
+                      </tr>
+                    ) : (
+                      summaryPrintRows.map((r) => (
+                        <tr key={r.key}>
+                          <td>{r.label}</td>
+                          <td className="num is-pos">{brl(r.income)}</td>
+                          <td className="num is-neg">{brl(r.expense)}</td>
+                          <td className="num">{brl(r.net)}</td>
+                          <td className="num">{r.count}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                  <tfoot>
+                    <tr className="is-total">
+                      <td>
+                        <strong>Total</strong>
+                      </td>
+                      <td className="num">
+                        <strong>{brl(result.totals.income)}</strong>
+                      </td>
+                      <td className="num">
+                        <strong>{brl(result.totals.expense)}</strong>
+                      </td>
+                      <td className="num">
+                        <strong>{brl(result.totals.net)}</strong>
+                      </td>
+                      <td className="num">
+                        <strong>{result.totals.count}</strong>
                       </td>
                     </tr>
-                  ) : (
-                    summaryPrintRows.map((r) => (
-                      <tr key={r.key}>
-                        <td>{r.label}</td>
-                        <td className="num is-pos">{brl(r.income)}</td>
-                        <td className="num is-neg">{brl(r.expense)}</td>
-                        <td className="num">{brl(r.net)}</td>
-                        <td className="num">{r.count}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-                <tfoot>
-                  <tr className="is-total">
-                    <td>
-                      <strong>Total</strong>
-                    </td>
-                    <td className="num">
-                      <strong>{brl(result.totals.income)}</strong>
-                    </td>
-                    <td className="num">
-                      <strong>{brl(result.totals.expense)}</strong>
-                    </td>
-                    <td className="num">
-                      <strong>{brl(result.totals.net)}</strong>
-                    </td>
-                    <td className="num">
-                      <strong>{result.totals.count}</strong>
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
+                  </tfoot>
+                </table>
+              </div>
               <Pager
                 total={summaryListing.total}
                 fromRow={summaryListing.fromRow}

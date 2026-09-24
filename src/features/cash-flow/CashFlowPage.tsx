@@ -53,6 +53,7 @@ import { dateInPeriod, periodRange, usePeriod } from "@/shared/lib/period";
 import { useFetch } from "@/shared/hooks/use-fetch";
 import { isMensalidadeName, isUnidentifiedName, natureForTypeName } from "@/domain/movement";
 import { clearIdentifyFlag, readIdentifyFlag } from "@/core/session/identify-flag";
+import { buildSplitPartDescription } from "@/features/cash-flow/split-description";
 
 type Flow = {
   opening: number;
@@ -71,6 +72,15 @@ type TxView = Transaction & {
   guardian: MemberGuardian | null;
   createdByUser: StampUser;
   updatedByUser: StampUser;
+};
+
+type SplitPartDraft = {
+  amount: string;
+  movementTypeId: string;
+  description: string;
+  memberId: string;
+  /** Se false, o usuário editou a descrição e não regeneramos automaticamente. */
+  autoDescription: boolean;
 };
 
 function blankForm(year: number, month: number) {
@@ -120,7 +130,7 @@ export default function CashFlow() {
   const [saving, setSaving] = useState(false);
   const [attempted, setAttempted] = useState(false);
   const [splitting, setSplitting] = useState<TxView | null>(null);
-  const [splitParts, setSplitParts] = useState<{ amount: string; movementTypeId: string; description: string }[]>([]);
+  const [splitParts, setSplitParts] = useState<SplitPartDraft[]>([]);
 
   const unidentifiedTypeIds = useMemo(
     () => new Set((types.data ?? []).filter((item) => isUnidentifiedName(item.name)).map((item) => item.id)),
@@ -450,20 +460,51 @@ export default function CashFlow() {
   function openSplit(tx: TxView) {
     const half = Math.round((tx.amount / 2) * 100) / 100;
     const rest = Math.round((tx.amount - half) * 100) / 100;
+    const amounts = [half, rest];
     setSplitting(tx);
-    setSplitParts([
-      {
-        amount: formatMoney(half),
-        movementTypeId: tx.movementTypeId,
-        description: tx.description,
-      },
-      {
-        amount: formatMoney(rest),
-        movementTypeId: "",
-        description: "",
-      },
-    ]);
+    setSplitParts(
+      amounts.map((amount, index) => ({
+        amount: formatMoney(amount),
+        movementTypeId: index === 0 ? tx.movementTypeId : "",
+        memberId: index === 0 ? (tx.memberId ?? "") : "",
+        autoDescription: true,
+        description: buildSplitPartDescription({
+          baseDescription: tx.description,
+          partIndex: index + 1,
+          partCount: amounts.length,
+          partAmount: amount,
+          totalAmount: tx.amount,
+          memberName: index === 0 ? tx.member?.name : undefined,
+        }),
+      })),
+    );
     setError(null);
+  }
+
+  function refreshSplitDescriptions(parts: SplitPartDraft[], totalAmount: number, baseDescription: string) {
+    return parts.map((part, index) => {
+      if (!part.autoDescription) return part;
+      const memberName = (members.data ?? []).find((item) => item.id === part.memberId)?.name;
+      return {
+        ...part,
+        description: buildSplitPartDescription({
+          baseDescription,
+          partIndex: index + 1,
+          partCount: parts.length,
+          partAmount: parseMoney(part.amount) || 0,
+          totalAmount,
+          memberName,
+        }),
+      };
+    });
+  }
+
+  function updateSplitPart(index: number, patch: Partial<SplitPartDraft>) {
+    if (!splitting) return;
+    setSplitParts((current) => {
+      const next = current.map((part, i) => (i === index ? { ...part, ...patch } : part));
+      return refreshSplitDescriptions(next, splitting.amount, splitting.description);
+    });
   }
 
   async function saveSplit(e: FormEvent<HTMLFormElement>) {
@@ -473,6 +514,7 @@ export default function CashFlow() {
       amount: parseMoney(part.amount),
       movementTypeId: part.movementTypeId,
       description: part.description.trim(),
+      memberId: part.memberId || null,
     }));
     if (parts.some((part) => !(part.amount > 0) || !part.movementTypeId || part.description.length < 2)) {
       setError("Preencha valor, tipo e descrição de cada parte.");
@@ -736,6 +778,16 @@ export default function CashFlow() {
                               {t.account ? `${t.account.holderName} · ` : ""}
                               {methodLabel(t.method)}
                             </div>
+                            {t.splitGroupId && t.splitTotal != null && t.splitIndex != null && t.splitCount != null ? (
+                              <div className="split-hint">
+                                <Badge kind="split">
+                                  Rateio {t.splitIndex}/{t.splitCount}
+                                </Badge>
+                                <span className="muted">
+                                  Parte de {brl(t.splitTotal)} · as outras partes aparecem como linhas separadas
+                                </span>
+                              </div>
+                            ) : null}
                             <RecordStamp
                               origin={t.origin}
                               createdAt={t.createdAt}
@@ -743,8 +795,7 @@ export default function CashFlow() {
                               updatedAt={t.updatedAt}
                               updatedBy={t.updatedByUser}
                             />
-                          </td>
-                          <td>
+                          </td>                          <td>
                             <Badge kind={t.type}>{t.movementType?.name ?? "—"}</Badge>
                           </td>
                           <td>
@@ -759,8 +810,12 @@ export default function CashFlow() {
                           </td>
                           <td className={`num ${signedClass(t.type === "income" ? t.amount : -t.amount)}`}>
                             {t.type === "income" ? "+" : "−"} {brl(t.amount)}
-                          </td>
-                          <td className="cell-actions">
+                            {t.splitGroupId && t.splitTotal != null ? (
+                              <div className="muted" style={{ fontWeight: 400, fontSize: "0.75rem" }}>
+                                de {brl(t.splitTotal)}
+                              </div>
+                            ) : null}
+                          </td>                          <td className="cell-actions">
                             {unidentifiedRow ? (
                               <IconButton
                                 label="Identificar tipo"
@@ -1166,22 +1221,19 @@ export default function CashFlow() {
             <form onSubmit={(event) => void saveSplit(event)} className={formClass("form-grid", attempted)} noValidate>
               {error ? <div className="error wide">{error}</div> : null}
               <p className="muted wide">
-                {formatDate(splitting.date)} · {brl(splitting.amount)} · {splitting.description}. A soma das partes
-                precisa ser exatamente esse valor.
+                {formatDate(splitting.date)} · total {brl(splitting.amount)} · {splitting.description}. Cada parte vira
+                um lançamento; a soma precisa ser exatamente o total. Escolha o associado (filho) em cada parte quando o
+                crédito for de mais de um jovem.
               </p>
               {splitParts.map((part, index) => (
-                <div key={index} className="wide form-grid">
+                <div key={index} className="wide form-grid split-part">
                   <label className="field">
                     <span>Parte {index + 1} (R$)</span>
                     <input
                       required
                       inputMode="decimal"
                       value={part.amount}
-                      onChange={(e) => {
-                        const next = [...splitParts];
-                        next[index] = { ...part, amount: maskMoney(e.target.value) };
-                        setSplitParts(next);
-                      }}
+                      onChange={(e) => updateSplitPart(index, { amount: maskMoney(e.target.value) })}
                     />
                   </label>
                   <label className="field">
@@ -1189,11 +1241,7 @@ export default function CashFlow() {
                     <select
                       required
                       value={part.movementTypeId}
-                      onChange={(e) => {
-                        const next = [...splitParts];
-                        next[index] = { ...part, movementTypeId: e.target.value };
-                        setSplitParts(next);
-                      }}
+                      onChange={(e) => updateSplitPart(index, { movementTypeId: e.target.value })}
                     >
                       <option value="">Selecione</option>
                       {(types.data ?? [])
@@ -1208,17 +1256,32 @@ export default function CashFlow() {
                         ))}
                     </select>
                   </label>
+                  <label className="field">
+                    <span>Associado (opcional)</span>
+                    <select
+                      value={part.memberId}
+                      onChange={(e) => updateSplitPart(index, { memberId: e.target.value })}
+                    >
+                      <option value="">Sem associado</option>
+                      {(members.data ?? [])
+                        .filter((item) => item.status === "active")
+                        .map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.name}
+                            {item.branch ? ` · ${BRANCH_LABELS[item.branch]}` : ""}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
                   <label className="field wide">
                     <span>Descrição</span>
                     <input
                       required
                       minLength={2}
                       value={part.description}
-                      onChange={(e) => {
-                        const next = [...splitParts];
-                        next[index] = { ...part, description: e.target.value };
-                        setSplitParts(next);
-                      }}
+                      onChange={(e) =>
+                        updateSplitPart(index, { description: e.target.value, autoDescription: false })
+                      }
                     />
                   </label>
                 </div>
@@ -1227,7 +1290,22 @@ export default function CashFlow() {
                 <button
                   className="btn btn-outline"
                   type="button"
-                  onClick={() => setSplitParts([...splitParts, { amount: "", movementTypeId: "", description: "" }])}
+                  onClick={() => {
+                    if (!splitting) return;
+                    setSplitParts((current) => {
+                      const next: SplitPartDraft[] = [
+                        ...current,
+                        {
+                          amount: "",
+                          movementTypeId: "",
+                          memberId: "",
+                          description: "",
+                          autoDescription: true,
+                        },
+                      ];
+                      return refreshSplitDescriptions(next, splitting.amount, splitting.description);
+                    });
+                  }}
                 >
                   Outra parte
                 </button>

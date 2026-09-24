@@ -888,6 +888,44 @@ table.data tr.is-overdue td {
   white-space: nowrap;
 }
 
+table.data.report-summary {
+  table-layout: fixed;
+  width: 100%;
+}
+
+table.data.report-summary th:first-child,
+table.data.report-summary td:first-child {
+  width: 36%;
+  text-align: left;
+}
+
+table.data.report-summary > thead > tr > th.num,
+table.data.report-summary > tbody > tr > td.num,
+table.data.report-summary > tfoot > tr > td.num {
+  width: 16%;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+table.data.report-summary > thead > tr > th.num:last-child,
+table.data.report-summary > tbody > tr > td.num:last-child,
+table.data.report-summary > tfoot > tr > td.num:last-child {
+  width: 8%;
+}
+
+table.data.report-balance {
+  table-layout: fixed;
+  width: 100%;
+}
+
+table.data.report-balance > thead > tr > th.num,
+table.data.report-balance > tbody > tr > td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .is-pos {
   color: var(--moss);
 }
@@ -948,6 +986,29 @@ table.data tr.is-overdue td {
 .badge-expense {
   background: rgba(200, 16, 46, 0.12);
   color: var(--clay);
+}
+
+.badge-split {
+  background: rgba(75, 163, 227, 0.16);
+  color: #1a5f8f;
+}
+
+.split-hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.split-part {
+  padding: 12px 0;
+  border-top: 1px solid rgba(12, 45, 107, 0.08);
+}
+
+.split-part:first-of-type {
+  border-top: none;
+  padding-top: 0;
 }
 
 .fees-grid {
@@ -1375,6 +1436,16 @@ table.data tr.is-overdue td {
   }
 
   table.data th.num {
+    text-align: right;
+  }
+
+  table.data.report-summary {
+    table-layout: fixed;
+  }
+
+  table.data.report-summary > thead > tr > th.num,
+  table.data.report-summary > tbody > tr > td.num,
+  table.data.report-summary > tfoot > tr > td.num {
     text-align: right;
   }
 

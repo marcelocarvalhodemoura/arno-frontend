@@ -44,6 +44,7 @@ export default function Mensalidades() {
   const [paidAtDraft, setPaidAtDraft] = useState(todayISO());
   const [busy, setBusy] = useState(false);
   const [dueDayDraft, setDueDayDraft] = useState("");
+  const [alsoSettleIds, setAlsoSettleIds] = useState<string[]>([]);
   const today = todayISO();
   const currentMonth = Number(today.slice(5, 7));
   const currentYear = Number(today.slice(0, 4));
@@ -141,26 +142,46 @@ export default function Mensalidades() {
     }
   }
 
+  const siblingOpenCells = useMemo(() => {
+    if (!picked || picked.cell.status === "paid" || picked.cell.status === "none") return [];
+    const siblingIds = new Set(picked.row.siblingIds ?? []);
+    if (!siblingIds.size) return [];
+    return rows
+      .filter((row) => siblingIds.has(row.memberId))
+      .map((row) => {
+        const cell = row.cells.find((item) => item.month === picked.cell.month);
+        if (!cell || cell.status === "paid" || cell.status === "none" || !cell.transactionId) return null;
+        return { row, cell };
+      })
+      .filter((item): item is { row: MensalidadeRow; cell: MensalidadeCell } => Boolean(item));
+  }, [picked, rows]);
+
   async function settle(timing: "on_time" | "late") {
     if (!picked?.cell.transactionId) return;
     const paidAt = paidAtDraft || todayISO();
+    const transactionIds = [
+      picked.cell.transactionId,
+      ...alsoSettleIds.filter((id) => id !== picked.cell.transactionId),
+    ];
     setBusy(true);
     try {
       const tx = await api<{
         amount: number;
-        paymentStatus: string;
+        settled?: number;
+        paymentStatus?: string;
         paidAt?: string;
         notify?: { queued: number; sent: number; failed: number; skipped: number; note?: string };
       }>("/mensalidades/settle", {
         method: "PATCH",
         body: JSON.stringify({
-          transactionId: picked.cell.transactionId,
+          transactionIds,
           timing,
           paidAt,
           notifyReceipt: true,
         }),
       });
       const label = timing === "on_time" ? "pontual" : "com atraso";
+      const count = tx.settled ?? transactionIds.length;
       const notify = tx.notify;
       const notifyParts = notify
         ? [
@@ -171,12 +192,13 @@ export default function Mensalidades() {
             notify.note ?? "",
           ].filter(Boolean)
         : [];
-      toast.success(
-        notifyParts.length
-          ? `Mensalidade ${label} (${brl(tx.amount)}). ${notifyParts.join(" · ")}.`
-          : `Mensalidade registrada como ${label} (${brl(tx.amount)}). Recibo de confirmação enfileirado.`,
-      );
+      const base =
+        count === 1
+          ? `Mensalidade registrada como ${label} (${brl(tx.amount)})`
+          : `${count} mensalidades registradas como ${label} (${brl(tx.amount)})`;
+      toast.success(notifyParts.length ? `${base}. ${notifyParts.join(" · ")}.` : `${base}.`);
       setPicked(null);
+      setAlsoSettleIds([]);
       await list.reload();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Não foi possível registrar o pagamento");
@@ -422,6 +444,7 @@ export default function Mensalidades() {
                               cell={cell}
                               onOpen={() => {
                                 setPaidAtDraft(todayISO());
+                                setAlsoSettleIds([]);
                                 setPicked({ row, cell });
                               }}
                             />
@@ -448,7 +471,13 @@ export default function Mensalidades() {
       </FetchOverlay>
       <AnimatePresence>
         {picked && picked.cell.status !== "none" ? (
-          <Modal title={`${picked.row.name} · ${MONTHS[picked.cell.month - 1]}`} onClose={() => setPicked(null)}>
+          <Modal
+            title={`${picked.row.name} · ${MONTHS[picked.cell.month - 1]}`}
+            onClose={() => {
+              setPicked(null);
+              setAlsoSettleIds([]);
+            }}
+          >
             <p className="muted">
               {settlementLabel(picked.cell.status)} · {brl(picked.cell.amount)}
               {picked.cell.dueDate ? ` · vence ${formatDate(picked.cell.dueDate)}` : ""}
@@ -474,6 +503,36 @@ export default function Mensalidades() {
                   <span>Data do pagamento</span>
                   <input type="date" value={paidAtDraft} onChange={(e) => setPaidAtDraft(e.target.value)} />
                 </label>
+                {siblingOpenCells.length ? (
+                  <fieldset className="field wide" style={{ border: "none", padding: 0, margin: 0 }}>
+                    <legend className="muted" style={{ marginBottom: 8 }}>
+                      Baixar também irmão(s) neste mês (mesmo pagamento da família)
+                    </legend>
+                    {siblingOpenCells.map(({ row, cell }) => {
+                      const id = cell.transactionId!;
+                      const checked = alsoSettleIds.includes(id);
+                      return (
+                        <label
+                          key={id}
+                          style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) =>
+                              setAlsoSettleIds((current) =>
+                                e.target.checked ? [...current, id] : current.filter((item) => item !== id),
+                              )
+                            }
+                          />
+                          <span>
+                            {row.name} · {settlementLabel(cell.status)} · {brl(cell.amount)}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </fieldset>
+                ) : null}
               </>
             ) : null}
             {!channels.data?.email && !channels.data?.whatsapp ? (
@@ -482,7 +541,15 @@ export default function Mensalidades() {
               </p>
             ) : null}
             <div className="modal-actions">
-              <button className="btn btn-ghost" type="button" onClick={() => setPicked(null)} disabled={busy}>
+              <button
+                className="btn btn-ghost"
+                type="button"
+                onClick={() => {
+                  setPicked(null);
+                  setAlsoSettleIds([]);
+                }}
+                disabled={busy}
+              >
                 Fechar
               </button>
               <button
@@ -539,7 +606,10 @@ export default function Mensalidades() {
                         disabled={!picked.cell.transactionId || !paidAtDraft}
                         onClick={() => void settle("on_time")}
                       >
-                        Pagar pontual ({brl(picked.cell.onTimeAmount)})
+                        Pagar pontual
+                        {alsoSettleIds.length
+                          ? ` (${1 + alsoSettleIds.length} jovens)`
+                          : ` (${brl(picked.cell.onTimeAmount)})`}
                       </SubmitButton>
                       <SubmitButton
                         type="button"
@@ -548,7 +618,10 @@ export default function Mensalidades() {
                         disabled={!picked.cell.transactionId || !paidAtDraft}
                         onClick={() => void settle("late")}
                       >
-                        Pagar com atraso ({brl(picked.cell.lateAmount)})
+                        Pagar com atraso
+                        {alsoSettleIds.length
+                          ? ` (${1 + alsoSettleIds.length} jovens)`
+                          : ` (${brl(picked.cell.lateAmount)})`}
                       </SubmitButton>
                     </>
                   ) : (
@@ -559,7 +632,10 @@ export default function Mensalidades() {
                       disabled={!picked.cell.transactionId || !paidAtDraft}
                       onClick={() => void settle("on_time")}
                     >
-                      Marcar paga ({brl(picked.cell.onTimeAmount)})
+                      Marcar paga
+                      {alsoSettleIds.length
+                        ? ` (${1 + alsoSettleIds.length} jovens)`
+                        : ` (${brl(picked.cell.onTimeAmount)})`}
                     </SubmitButton>
                   )}
                 </>
