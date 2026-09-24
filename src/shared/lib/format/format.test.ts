@@ -37,9 +37,13 @@ describe("labels", () => {
     expect(originLabel("manual")).toBe("Inserção manual");
     expect(originLabel("integration")).toBe("Integração");
     expect(originLabel("sicredi")).toBe("Sicredi");
+    expect(originLabel("integration", "pdf")).toBe("Extrato PDF");
+    expect(originLabel("integration", "csv")).toBe("Extrato CSV");
     expect(originShort("manual")).toBe("Manual");
     expect(originShort("integration")).toBe("Integração");
     expect(originShort("sicredi")).toBe("Sicredi");
+    expect(originShort("integration", "pdf")).toBe("PDF");
+    expect(originShort("integration", "csv")).toBe("CSV");
     expect(stampAuthor({ name: "Tesouraria do Grupo", username: "tesouraria" })).toBe("@tesouraria");
     expect(stampAuthor({ name: "Administração do Grupo" })).toBe("Administração");
     expect(stampAuthor({ name: "Carga inicial" })).toBe("Carga inicial");

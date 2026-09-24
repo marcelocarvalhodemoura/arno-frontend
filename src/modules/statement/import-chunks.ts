@@ -55,6 +55,7 @@ export async function postImportChunks<T>(
   path: string,
   rows: T[],
   onProgress?: (current: number, total: number) => void,
+  options?: { importSource?: "csv" | "pdf" },
 ): Promise<ChunkImportResult> {
   const unique = uniqueItems(rows, persistKey);
   const chunks = chunkList(unique, IMPORT_CHUNK_SIZE);
@@ -69,7 +70,10 @@ export async function postImportChunks<T>(
       skipped: { reason: string }[];
     }>(path, {
       method: "POST",
-      body: JSON.stringify({ rows: chunks[index] }),
+      body: JSON.stringify({
+        rows: chunks[index],
+        ...(options?.importSource ? { importSource: options.importSource } : {}),
+      }),
     });
     acc.created += result.created;
     acc.updated += result.updated ?? 0;

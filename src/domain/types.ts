@@ -26,6 +26,7 @@ export type GuardianRelationship =
 export type ReportGroupBy = "none" | "month" | "branch" | "movementType" | "nature";
 export type UserRole = "admin" | "tesoureiro";
 export type RecordOrigin = "manual" | "integration" | "sicredi";
+export type ImportSource = "csv" | "pdf" | "sicredi";
 export type BankProvider = "sicredi";
 export type BankMovementStatus = "new" | "matched" | "imported";
 
@@ -278,6 +279,8 @@ export interface Transaction {
   splitIndex?: number;
   /** Rateio: quantidade de partes. */
   splitCount?: number;
+  /** csv | pdf | sicredi — preenchido nas importações novas. */
+  importSource?: ImportSource;
   createdBy?: string;
   createdAt: string;
   updatedAt?: string;
@@ -440,6 +443,7 @@ export interface FiscalLedgerLine {
   updatedByName?: string;
   updatedAt?: string;
   origin: RecordOrigin;
+  importSource?: ImportSource;
 }
 
 export interface DashboardPayload {

@@ -6,12 +6,6 @@ export function stampAuthor(author?: { name: string; username?: string } | null)
   return name;
 }
 
-export function originShort(origin?: string): string {
-  if (origin === "manual") return "Manual";
-  if (origin === "sicredi") return "Sicredi";
-  return "Integração";
-}
-
 export function methodLabel(method: string): string {
   const map: Record<string, string> = {
     pix: "Pix",
@@ -50,9 +44,19 @@ export function holderKindLabel(kind: string): string {
   return map[kind] ?? kind;
 }
 
-export function originLabel(origin?: string): string {
+export function originLabel(origin?: string, importSource?: string): string {
+  if (origin === "sicredi" || importSource === "sicredi") return "Sicredi";
   if (origin === "manual") return "Inserção manual";
-  if (origin === "sicredi") return "Sicredi";
+  if (importSource === "pdf") return "Extrato PDF";
+  if (importSource === "csv") return "Extrato CSV";
+  return "Integração";
+}
+
+export function originShort(origin?: string, importSource?: string): string {
+  if (origin === "sicredi" || importSource === "sicredi") return "Sicredi";
+  if (origin === "manual") return "Manual";
+  if (importSource === "pdf") return "PDF";
+  if (importSource === "csv") return "CSV";
   return "Integração";
 }
 

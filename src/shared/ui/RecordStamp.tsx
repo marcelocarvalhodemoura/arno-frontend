@@ -7,19 +7,24 @@ import {
   stampAuthor,
 } from "@/shared/lib/format";
 
-type Author = {
-  name: string;
-  username?: string;
-} | null | undefined;
+type Author =
+  | {
+      name: string;
+      username?: string;
+    }
+  | null
+  | undefined;
 
 export default function RecordStamp({
   origin,
+  importSource,
   createdAt,
   createdBy,
   updatedAt,
   updatedBy,
 }: {
   origin?: string;
+  importSource?: string;
   createdAt: string;
   createdBy?: Author;
   updatedAt?: string;
@@ -32,7 +37,7 @@ export default function RecordStamp({
   const who = stampAuthor(author);
   const detail = `${action} por ${author?.name ?? "Carga inicial"}${
     author?.username ? ` (@${author.username})` : ""
-  } · ${formatDateTime(at)} · ${originLabel(origin)}`;
+  } · ${formatDateTime(at)} · ${originLabel(origin, importSource)}`;
 
   return (
     <div className={`tx-stamp ${altered ? "is-altered" : ""}`} title={detail}>
@@ -40,7 +45,7 @@ export default function RecordStamp({
         {action} por {who}
       </strong>
       <span>{formatCompactDateTime(at)}</span>
-      <span className="tx-stamp__origin">{originShort(origin)}</span>
+      <span className="tx-stamp__origin">{originShort(origin, importSource)}</span>
     </div>
   );
 }

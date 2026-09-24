@@ -197,7 +197,7 @@ export default function CashFlow() {
             t.account?.holderName,
             t.createdByUser?.name,
             t.updatedByUser?.name,
-            originLabel(t.origin),
+            originLabel(t.origin, t.importSource),
             BRANCH_LABELS[t.branch],
             settlementLabel(settlement),
             dueDateOf(t),
@@ -800,6 +800,7 @@ export default function CashFlow() {
           </div>
           <RecordStamp
             origin={t.origin}
+            importSource={t.importSource}
             createdAt={t.createdAt}
             createdBy={t.createdByUser}
             updatedAt={t.updatedAt}

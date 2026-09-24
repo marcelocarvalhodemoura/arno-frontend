@@ -99,7 +99,7 @@ export default function Reports() {
           natureLabel(line.nature),
           line.createdByName,
           line.updatedByName,
-          originLabel(line.origin),
+          originLabel(line.origin, line.importSource),
         ]),
       ),
     [result, ledgerQuery],
@@ -199,7 +199,7 @@ export default function Reports() {
       "Lançado por": line.createdByName,
       "Registrado em": formatDateTime(line.createdAt),
       Situação: auditAction(line.updatedAt, line.createdAt),
-      Origem: originLabel(line.origin),
+      Origem: originLabel(line.origin, line.importSource),
       "Alterado por": line.updatedByName ?? "",
       "Alterado em": line.updatedAt ? formatDateTime(line.updatedAt) : "",
       Entrada: line.income,
@@ -607,6 +607,7 @@ export default function Reports() {
                             <div className="no-print">
                               <RecordStamp
                                 origin={line.origin}
+                                importSource={line.importSource}
                                 createdAt={line.createdAt}
                                 createdBy={line.createdByName ? { name: line.createdByName } : null}
                                 updatedAt={line.updatedAt}

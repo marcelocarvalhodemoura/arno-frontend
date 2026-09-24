@@ -148,6 +148,7 @@ export default function Integration() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [kind, setKind] = useState<Kind>("members");
   const [fileName, setFileName] = useState("");
+  const [importSource, setImportSource] = useState<"csv" | "pdf" | null>(null);
   const [over, setOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -199,6 +200,7 @@ export default function Integration() {
     setMemberPreview([]);
     setTxPreview([]);
     setFileName("");
+    setImportSource(null);
     setError(null);
     setLayout(null);
     setAiUsed(false);
@@ -250,15 +252,14 @@ export default function Integration() {
       return;
     }
     setFileName(file.name);
+    setImportSource(null);
     setError(null);
     setImportProgress(null);
     if (kind === "members") {
       setInterpreting(true);
       try {
         const text = await fileToCsvText(file);
-        const mapped = await mapImportFile(text, "members", (current, total) =>
-          setImportProgress({ current, total }),
-        );
+        const mapped = await mapImportFile(text, "members", (current, total) => setImportProgress({ current, total }));
         const table = parseCsv(mapped.csv);
         if (!table.rows.length) {
           setMemberPreview([]);
@@ -291,12 +292,10 @@ export default function Integration() {
     }
     setInterpreting(true);
     try {
-      const payload = isPdfFile(file)
-        ? { pdf: await fileToBase64(file) }
-        : { csv: await fileToCsvText(file) };
-      const result = await interpretStatementFile(payload, (current, total) =>
-        setImportProgress({ current, total }),
-      );
+      const source = isPdfFile(file) ? ("pdf" as const) : ("csv" as const);
+      setImportSource(source);
+      const payload = source === "pdf" ? { pdf: await fileToBase64(file) } : { csv: await fileToCsvText(file) };
+      const result = await interpretStatementFile(payload, (current, total) => setImportProgress({ current, total }));
       await types.reload();
       setLayout(result.layout);
       setAiUsed(result.aiUsed);
@@ -354,7 +353,9 @@ export default function Integration() {
         const skipped = result.skipped.length;
         const parts = [
           result.created ? qty(result.created, "associado cadastrado", "associados cadastrados") : "",
-          result.updated ? qty(result.updated, "teve responsáveis atualizados", "tiveram responsáveis atualizados") : "",
+          result.updated
+            ? qty(result.updated, "teve responsáveis atualizados", "tiveram responsáveis atualizados")
+            : "",
           skipped ? qty(skipped, "já existia", "já existiam") : "",
         ].filter(Boolean);
         toast.success(parts.length ? `${parts.join(". ")}.` : "Nenhum associado novo.");
@@ -376,6 +377,7 @@ export default function Integration() {
             memberGuardianId: row.memberGuardianId,
           })),
           (current, total) => setImportProgress({ current, total }),
+          importSource ? { importSource } : undefined,
         );
         const skipped = result.skipped.length;
         const paid = result.paid ?? 0;
@@ -529,13 +531,12 @@ export default function Integration() {
               <>
                 <p style={{ margin: "18px 0 10px" }}>
                   {layout === "bank" ? "Extrato do banco" : "Modelo da tesouraria"}
+                  {importSource === "pdf" ? " · arquivo PDF" : importSource === "csv" ? " · arquivo CSV/planilha" : ""}
                   {aiMapped ? " · colunas identificadas pelo modelo" : " · colunas identificadas"}
                   {aiUsed ? " · classificado com modelo" : " · classificado por regras"}
                   {!aiUsed && aiAvailable ? " · modelo disponível para linhas duvidosas" : ""}
                   {` · ${qty(txPreview.length, "linha lida", "linhas lidas")}`}
-                  {txPreview.length > IMPORT_PREVIEW_ROWS
-                    ? ` · prévia das primeiras ${IMPORT_PREVIEW_ROWS}`
-                    : ""}
+                  {txPreview.length > IMPORT_PREVIEW_ROWS ? ` · prévia das primeiras ${IMPORT_PREVIEW_ROWS}` : ""}
                   {validCount ? ` · ${qty(validCount, "pronta", "prontas")} para importar` : ""}
                   {reviewCount ? ` · ${qty(reviewCount, "para conferir", "para conferir")}` : ""}
                   {errorCount ? ` · ${qty(errorCount, "com erro", "com erros")}` : ""}
@@ -693,9 +694,7 @@ export default function Integration() {
                 <p style={{ margin: "18px 0 10px" }}>
                   {aiMapped ? "Colunas identificadas pelo modelo" : "Colunas identificadas"}
                   {` · ${qty(memberPreview.length, "associado lido", "associados lidos")}`}
-                  {memberPreview.length > IMPORT_PREVIEW_ROWS
-                    ? ` · prévia das primeiras ${IMPORT_PREVIEW_ROWS}`
-                    : ""}
+                  {memberPreview.length > IMPORT_PREVIEW_ROWS ? ` · prévia das primeiras ${IMPORT_PREVIEW_ROWS}` : ""}
                   {validCount ? ` · ${qty(validCount, "pronta", "prontas")} para importar` : ""}
                   {errorCount ? ` · ${qty(errorCount, "com erro", "com erros")}` : ""}
                 </p>
