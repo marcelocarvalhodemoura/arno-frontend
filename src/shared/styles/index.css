@@ -663,10 +663,12 @@ td.cell-actions .icon-btn + .icon-btn {
 .field {
   display: grid;
   gap: 6px;
+  min-width: 0;
+  align-content: start;
 }
 
-.field span,
-.field label {
+.field > span:first-of-type,
+.field > label {
   font-size: 0.78rem;
   font-weight: 600;
   color: var(--muted);
@@ -720,16 +722,26 @@ form.is-attempted textarea:invalid:focus,
 input,
 select,
 textarea {
+  width: 100%;
+  max-width: 100%;
   border: 1px solid rgba(12, 45, 107, 0.16);
   background: var(--white);
   border-radius: 12px;
   padding: 10px 12px;
   color: var(--ink);
   min-height: 42px;
+  min-width: 0;
   transition:
     border-color 0.28s var(--ease),
     box-shadow 0.28s var(--ease),
     background 0.28s var(--ease);
+}
+
+input[type="date"],
+input[type="datetime-local"],
+input[type="month"],
+input[type="time"] {
+  min-width: 0;
 }
 
 input:focus,
@@ -801,7 +813,8 @@ textarea {
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  gap: 14px 16px;
+  align-items: start;
 }
 
 .form-grid .wide {
@@ -2115,9 +2128,14 @@ table.data select {
 
 .filters {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px 14px;
   margin-bottom: 16px;
+  align-items: start;
+}
+
+.filters .field {
+  min-width: 0;
 }
 
 .pager {

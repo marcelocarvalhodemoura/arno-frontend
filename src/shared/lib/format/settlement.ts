@@ -9,7 +9,7 @@ export function settlementOf(paymentStatus: string | undefined, date: string, to
 }
 
 export function dueDateOf(tx: { date: string; movementType?: { name?: string } | null }): string {
-  return isMensalidadeName(tx.movementType?.name) ? tx.date : "";
+  return tx.date?.slice(0, 10) ?? "";
 }
 
 export function paidDateOf(tx: {

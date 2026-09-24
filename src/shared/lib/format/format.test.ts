@@ -53,7 +53,7 @@ describe("labels", () => {
     expect(settlementLabel("overdue")).toBe("Vencido");
     expect(settlementLabel("none")).toBe("—");
     expect(dueDateOf({ date: "2026-08-10", movementType: { name: "Mensalidade" } })).toBe("2026-08-10");
-    expect(dueDateOf({ date: "2026-08-10", movementType: { name: "Doação" } })).toBe("");
+    expect(dueDateOf({ date: "2026-08-10", movementType: { name: "Doação" } })).toBe("2026-08-10");
     expect(paidDateOf({ date: "2026-08-10", movementType: { name: "Doação" } })).toBe("2026-08-10");
     expect(paidDateOf({ date: "2026-08-10", paidAt: "2026-08-16", movementType: { name: "Mensalidade" } })).toBe(
       "2026-08-16",

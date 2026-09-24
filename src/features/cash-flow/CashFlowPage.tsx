@@ -453,12 +453,11 @@ export default function CashFlow() {
     setError(null);
     const amount = parseMoney(form.amount);
     if (!Number.isFinite(amount) || amount <= 0) return;
-    const paymentDate = form.paidAt || (!feeLaunch ? form.date : "");
-    const dueDate = feeLaunch ? form.date : paymentDate || form.date;
-    if (feeLaunch && !form.date) return;
+    const dueDate = form.date;
+    const paymentDate = form.paidAt;
     if (!dueDate) return;
-    if (form.paymentStatus === "paid" && feeLaunch && !paymentDate) {
-      setError("Informe a data de pagamento da mensalidade");
+    if (form.paymentStatus === "paid" && !paymentDate) {
+      setError(feeLaunch ? "Informe a data de pagamento da mensalidade" : "Informe a data de pagamento");
       return;
     }
     setSaving(true);
@@ -1180,31 +1179,22 @@ export default function CashFlow() {
           <Modal title={editing ? "Alterar lançamento" : "Lançamento manual"} onClose={closeForm}>
             <form onSubmit={onSave} className={formClass("form-grid", attempted)} noValidate>
               {error ? <div className="error wide">{error}</div> : null}
-              {feeLaunch ? (
-                <label className="field">
-                  <span>Vencimento</span>
-                  <input
-                    required
-                    type="date"
-                    value={form.date}
-                    onChange={(e) => setForm({ ...form, date: e.target.value })}
-                  />
-                </label>
-              ) : null}
+              <label className="field">
+                <span>Vencimento</span>
+                <input
+                  required
+                  type="date"
+                  value={form.date}
+                  onChange={(e) => setForm({ ...form, date: e.target.value })}
+                />
+              </label>
               <label className="field">
                 <span>Data de pagamento</span>
                 <input
-                  required={form.paymentStatus === "paid" || !feeLaunch}
+                  required={form.paymentStatus === "paid"}
                   type="date"
                   value={form.paidAt}
-                  onChange={(e) => {
-                    const paidAt = e.target.value;
-                    setForm({
-                      ...form,
-                      paidAt,
-                      date: feeLaunch ? form.date : paidAt || form.date,
-                    });
-                  }}
+                  onChange={(e) => setForm({ ...form, paidAt: e.target.value })}
                 />
               </label>
               <label className="field">
@@ -1218,10 +1208,10 @@ export default function CashFlow() {
                       ...form,
                       paymentStatus,
                       paidAt:
-                        paymentStatus === "pending" && feeLaunch
+                        paymentStatus === "pending"
                           ? ""
                           : paymentStatus === "paid"
-                            ? form.paidAt || todayISO()
+                            ? form.paidAt || form.date || todayISO()
                             : form.paidAt,
                     });
                   }}
@@ -1273,12 +1263,11 @@ export default function CashFlow() {
                   onChange={(e) => {
                     const movementTypeId = e.target.value;
                     const next = (types.data ?? []).find((item) => item.id === movementTypeId);
-                    const nextFee = isMensalidadeName(next?.name);
                     setForm({
                       ...form,
                       movementTypeId,
-                      date: nextFee ? form.date || form.paidAt : form.date,
-                      paidAt: nextFee && form.paymentStatus !== "paid" ? form.paidAt : form.paidAt || form.date,
+                      date: form.date || form.paidAt,
+                      paidAt: form.paymentStatus === "paid" ? form.paidAt || form.date : form.paidAt,
                       branch: next?.branch || form.branch,
                     });
                   }}
