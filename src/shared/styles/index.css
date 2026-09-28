@@ -1056,6 +1056,49 @@ table.data.report-balance > tbody > tr > td.num {
   color: #1a5f8f;
 }
 
+.badge-ok {
+  background: rgba(45, 138, 78, 0.12);
+  color: var(--moss);
+}
+
+.badge-watch {
+  background: rgba(232, 180, 35, 0.2);
+  color: #8a6a00;
+}
+
+.badge-over {
+  background: rgba(200, 16, 46, 0.12);
+  color: var(--clay);
+}
+
+.budget-meter {
+  display: grid;
+  gap: 6px;
+  min-width: 120px;
+}
+
+.budget-meter__track {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(12, 45, 107, 0.08);
+  overflow: hidden;
+}
+
+.budget-meter__fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--moss);
+}
+
+.budget-meter__fill.is-watch {
+  background: #e8b423;
+}
+
+.budget-meter__fill.is-over {
+  background: var(--clay);
+}
+
 .split-hint {
   display: flex;
   flex-direction: column;

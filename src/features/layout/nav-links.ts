@@ -41,7 +41,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { to: "/mensalidades", label: "Mensalidade", icon: FaCalendarCheck, roles: ["admin", "tesoureiro"] },
       { to: "/tipos", label: "Tipo de movimentação", icon: FaListAlt, roles: ["admin", "tesoureiro"] },
       { to: "/taxas", label: "Taxa", icon: FaPercentage, roles: ["admin", "tesoureiro"] },
-      { to: "/projetos", label: "Projeto financeiro", icon: FaFlag, roles: ["admin"] },
+      { to: "/projetos", label: "Previsão de gastos", icon: FaFlag, roles: ["admin"] },
     ],
   },
   {

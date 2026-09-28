@@ -450,6 +450,24 @@ export interface FiscalLedgerLine {
   importSource?: ImportSource;
 }
 
+export type BudgetStatus = "ok" | "watch" | "over";
+
+export interface BudgetSlice {
+  planned: number;
+  actual: number;
+  remaining: number;
+  status: BudgetStatus;
+}
+
+export interface DashboardBudget {
+  plannedExpense: number;
+  actualExpense: number;
+  remaining: number;
+  pctUsed: number;
+  byBranch: (BudgetSlice & { branch: BranchId })[];
+  byMovementType: (BudgetSlice & { movementTypeId: string; name: string })[];
+}
+
 export interface DashboardPayload {
   year: number;
   month: number;
@@ -468,6 +486,8 @@ export interface DashboardPayload {
     members: number;
   }[];
   chart: { month: string; income: number; expense: number; balance: number }[];
+  /** Previsão anual do grupo (independente do filtro de mês do painel). */
+  budget: DashboardBudget;
 }
 
 /** Padrão do cartaz; o valor vigente fica em Configurações (`mensalidadeDueDay`). */

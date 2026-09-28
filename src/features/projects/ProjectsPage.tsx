@@ -3,6 +3,7 @@ import {
   BRANCH_LABELS,
   YOUTH_BRANCHES,
   type BranchId,
+  type BudgetStatus,
   type FinancialProject,
   type MovementType,
   type ProjectItem,
@@ -23,6 +24,7 @@ import { AnimatePresence } from "framer-motion";
 import { FaPen } from "react-icons/fa";
 import { api } from "@/core/http";
 import { useToast } from "@/shared/feedback/toast";
+import { budgetPct, budgetStatus, budgetStatusLabel } from "@/shared/lib/budget";
 import { brl } from "@/shared/lib/format";
 import { matchesQuery, usePagedList } from "@/shared/lib/listing";
 import { formatMoney, maskMoney, parseMoney } from "@/shared/lib/masks";
@@ -47,6 +49,10 @@ const TABS: { id: BranchId; unit: string; color: string }[] = [
   { id: "grupo", unit: "Grupo", color: "#4BA3E3" },
 ];
 
+function StatusBadge({ status }: { status: BudgetStatus }) {
+  return <Badge kind={status}>{budgetStatusLabel(status)}</Badge>;
+}
+
 export default function Projects() {
   const toast = useToast();
   const { year } = usePeriod();
@@ -66,12 +72,15 @@ export default function Projects() {
 
   const project = list.data?.[0];
   const meta = TABS.find((item) => item.id === branch);
+  const paceMonth = new Date().getMonth() + 1;
   const itemRows = useMemo(
     () => (project?.items ?? []).filter((item) => matchesQuery(query, [item.description, item.category])),
     [project, query],
   );
   const listing = usePagedList(itemRows, `${project?.id ?? ""}|${query}|${branch}|${year}`);
   const activeTypes = (types.data ?? []).filter((item) => item.active);
+  const projectStatus = project ? budgetStatus(project.plannedTotal, project.actuals.expense, paceMonth) : "ok";
+  const usedPct = project ? budgetPct(project.plannedTotal, project.actuals.expense) : 0;
 
   async function save(e: FormEvent<HTMLFormElement>) {
     if (!submitAttempt(e, setAttempted)) return;
@@ -88,7 +97,7 @@ export default function Projects() {
       });
       setEditing(null);
       await list.reload();
-      toast.success("Projeto alterado com sucesso.");
+      toast.success("Previsão alterada com sucesso.");
     } finally {
       setSaving(false);
     }
@@ -111,7 +120,7 @@ export default function Projects() {
       setCreating(false);
       setCreateForm({ name: "", description: "" });
       await list.reload();
-      toast.success("Projeto criado. Inclua os itens do orçamento.");
+      toast.success("Previsão criada. Inclua os itens do orçamento.");
     } finally {
       setSaving(false);
     }
@@ -164,7 +173,7 @@ export default function Projects() {
       });
       closeEditItem();
       await list.reload();
-      toast.success(editingItem.id ? "Item do orçamento alterado com sucesso." : "Item incluído no orçamento.");
+      toast.success(editingItem.id ? "Item da previsão alterado." : "Item incluído na previsão.");
     } finally {
       setSavingItem(false);
     }
@@ -172,15 +181,15 @@ export default function Projects() {
 
   if (!list.data) {
     if (list.error) return <p className="error">{list.error}</p>;
-    return <PageLoader label="Carregando projetos…" />;
+    return <PageLoader label="Carregando previsão…" />;
   }
 
   return (
     <div>
       <PageHeader
-        kicker="Projetos financeiros"
-        title="Orçamento de cada ramo"
-        subtitle="Planejado versus realizado. Vincule o item ao tipo de movimentação para o caixa alimentar o realizado. O ramo Grupo também tem projeto."
+        kicker="Previsão de gastos"
+        title={`Orçamento anual · ${year}`}
+        subtitle="Defina o planejado por ramo e acompanhe o realizado pelos lançamentos do caixa vinculados a esta previsão."
         actions={
           !project ? (
             <button
@@ -191,7 +200,7 @@ export default function Projects() {
                 setCreating(true);
               }}
             >
-              Novo projeto
+              Nova previsão
             </button>
           ) : (
             <button className="btn btn-outline" type="button" onClick={openNewItem}>
@@ -219,22 +228,25 @@ export default function Projects() {
 
       {!project ? (
         <div className="card empty">
-          Nenhum projeto para {BRANCH_LABELS[branch]} em {year}.
+          Nenhuma previsão para {BRANCH_LABELS[branch]} em {year}.
         </div>
       ) : (
-        <FetchOverlay active={list.loading} label="Atualizando projeto…">
+        <FetchOverlay active={list.loading} label="Atualizando previsão…">
           <div className="card" style={{ marginBottom: 16, borderTop: `6px solid ${meta?.color}` }}>
             <div className="page-head" style={{ marginBottom: 8 }}>
               <div>
                 <h2>{project.name}</h2>
                 <p>{project.description}</p>
-                <RecordStamp
-                  origin={project.origin}
-                  createdAt={project.createdAt}
-                  createdBy={project.createdByUser}
-                  updatedAt={project.updatedAt}
-                  updatedBy={project.updatedByUser}
-                />
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
+                  <StatusBadge status={projectStatus} />
+                  <RecordStamp
+                    origin={project.origin}
+                    createdAt={project.createdAt}
+                    createdBy={project.createdByUser}
+                    updatedAt={project.updatedAt}
+                    updatedBy={project.updatedByUser}
+                  />
+                </div>
               </div>
               <button
                 className="btn btn-outline"
@@ -244,7 +256,7 @@ export default function Projects() {
                   setEditing(project);
                 }}
               >
-                Editar orçamento
+                Editar previsão
               </button>
             </div>
             <div className="grid-stats" style={{ marginTop: 16 }}>
@@ -261,19 +273,21 @@ export default function Projects() {
                 <strong>{brl(project.actuals.income)}</strong>
               </article>
               <article className="stat">
-                <h3>Saldo do projeto</h3>
-                <strong>{brl(project.plannedTotal - project.actuals.expense)}</strong>
+                <h3>Saldo da previsão</h3>
+                <strong className={project.plannedTotal - project.actuals.expense < 0 ? "is-neg" : "is-pos"}>
+                  {brl(project.plannedTotal - project.actuals.expense)}
+                </strong>
                 <small>
-                  {Math.min(100, Math.round((project.actuals.expense / (project.plannedTotal || 1)) * 100))}% do
-                  orçamento
+                  {usedPct}% do orçamento · {budgetStatusLabel(projectStatus)}
                 </small>
               </article>
             </div>
             <div className="progress-bar" style={{ marginTop: 16 }}>
               <span
                 style={{
-                  width: `${Math.min(100, (project.actuals.expense / (project.plannedTotal || 1)) * 100)}%`,
-                  background: meta?.color,
+                  width: `${Math.min(100, usedPct)}%`,
+                  background:
+                    projectStatus === "over" ? "var(--clay)" : projectStatus === "watch" ? "#e8b423" : meta?.color,
                 }}
               />
             </div>
@@ -286,7 +300,7 @@ export default function Projects() {
                 <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Descrição ou categoria…" />
               </label>
             </FilterBar>
-            <ListingResults fetching={list.loading} filtering={listing.busy} fetchLabel="Atualizando projeto…">
+            <ListingResults fetching={list.loading} filtering={listing.busy} fetchLabel="Atualizando previsão…">
               <table className="data">
                 <thead>
                   <tr>
@@ -295,13 +309,14 @@ export default function Projects() {
                     <th className="num">Planejado</th>
                     <th className="num">Realizado</th>
                     <th className="num">Saldo</th>
+                    <th>Situação</th>
                     <th className="cell-actions">Ações</th>
                   </tr>
                 </thead>
                 <tbody>
                   {listing.pageRows.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="muted">
+                      <td colSpan={7} className="muted">
                         Nenhum item com esses filtros.
                       </td>
                     </tr>
@@ -312,6 +327,7 @@ export default function Projects() {
                         project.actuals.byCategory.find((c) => c.category === item.category)?.expense ??
                         0;
                       const rest = item.planned - actual;
+                      const status = budgetStatus(item.planned, actual, paceMonth);
                       return (
                         <tr key={item.id}>
                           <td>{item.description}</td>
@@ -321,6 +337,9 @@ export default function Projects() {
                           <td className="num">{brl(item.planned)}</td>
                           <td className="num">{brl(actual)}</td>
                           <td className={`num ${rest < 0 ? "is-neg" : "is-pos"}`}>{brl(rest)}</td>
+                          <td>
+                            <StatusBadge status={status} />
+                          </td>
                           <td className="cell-actions">
                             <IconButton label="Alterar item" onClick={() => openEditItem(item)}>
                               <FaPen />
@@ -351,7 +370,7 @@ export default function Projects() {
         {creating ? (
           <Modal
             key="project-create"
-            title={`Novo projeto · ${BRANCH_LABELS[branch]} ${year}`}
+            title={`Nova previsão · ${BRANCH_LABELS[branch]} ${year}`}
             onClose={() => {
               setCreating(false);
               setAttempted(false);
@@ -389,7 +408,7 @@ export default function Projects() {
                   Cancelar
                 </button>
                 <SubmitButton busy={saving} busyLabel="Criando…">
-                  Criar projeto
+                  Criar previsão
                 </SubmitButton>
               </div>
             </form>
@@ -398,7 +417,7 @@ export default function Projects() {
         {editing ? (
           <Modal
             key="project-form"
-            title="Editar projeto"
+            title="Editar previsão"
             onClose={() => {
               setEditing(null);
               setAttempted(false);
@@ -479,7 +498,7 @@ export default function Projects() {
         {editingItem ? (
           <Modal
             key="project-item"
-            title={editingItem.id ? "Alterar item do orçamento" : "Incluir item"}
+            title={editingItem.id ? "Alterar item da previsão" : "Incluir item"}
             onClose={closeEditItem}
           >
             <form

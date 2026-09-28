@@ -354,6 +354,16 @@ export default function CashFlow() {
     return list;
   }, [types.data, form.type, form.movementTypeId]);
 
+  function suggestProjectId(movementTypeId: string, branch: BranchId) {
+    if (!movementTypeId) return "";
+    const list = projects.data ?? [];
+    const sameBranch = list.find(
+      (project) => project.branch === branch && project.items.some((item) => item.movementTypeId === movementTypeId),
+    );
+    if (sameBranch) return sameBranch.id;
+    return list.find((project) => project.items.some((item) => item.movementTypeId === movementTypeId))?.id ?? "";
+  }
+
   const selectedMovement = (types.data ?? []).find((item) => item.id === form.movementTypeId);
   const feeLaunch = isMensalidadeName(selectedMovement?.name);
 
@@ -1365,12 +1375,14 @@ export default function CashFlow() {
                   onChange={(e) => {
                     const movementTypeId = e.target.value;
                     const next = (types.data ?? []).find((item) => item.id === movementTypeId);
+                    const branch = next?.branch || form.branch;
                     setForm({
                       ...form,
                       movementTypeId,
                       date: form.date || form.paidAt,
                       paidAt: form.paymentStatus === "paid" ? form.paidAt || form.date : form.paidAt,
-                      branch: next?.branch || form.branch,
+                      branch,
+                      projectId: form.projectId || suggestProjectId(movementTypeId, branch),
                     });
                   }}
                 >
@@ -1409,7 +1421,14 @@ export default function CashFlow() {
                 <select
                   required
                   value={form.branch}
-                  onChange={(e) => setForm({ ...form, branch: e.target.value as BranchId })}
+                  onChange={(e) => {
+                    const branch = e.target.value as BranchId;
+                    setForm({
+                      ...form,
+                      branch,
+                      projectId: form.projectId || suggestProjectId(form.movementTypeId, branch),
+                    });
+                  }}
                 >
                   {ALL_BRANCHES.map((id) => (
                     <option key={id} value={id}>
@@ -1464,12 +1483,13 @@ export default function CashFlow() {
                 </select>
               </label>
               <label className="field">
-                <span>Projeto financeiro</span>
+                <span>Previsão de gastos</span>
                 <select value={form.projectId} onChange={(e) => setForm({ ...form, projectId: e.target.value })}>
-                  <option value="">Nenhum</option>
+                  <option value="">Nenhuma</option>
                   {(projects.data ?? []).map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name}
+                      {p.branch ? ` · ${BRANCH_LABELS[p.branch]}` : ""}
                     </option>
                   ))}
                 </select>
@@ -1617,7 +1637,14 @@ export default function CashFlow() {
                 <select
                   required
                   value={form.branch}
-                  onChange={(e) => setForm({ ...form, branch: e.target.value as BranchId })}
+                  onChange={(e) => {
+                    const branch = e.target.value as BranchId;
+                    setForm({
+                      ...form,
+                      branch,
+                      projectId: form.projectId || suggestProjectId(form.movementTypeId, branch),
+                    });
+                  }}
                 >
                   {ALL_BRANCHES.map((id) => (
                     <option key={id} value={id}>
