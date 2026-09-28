@@ -1,11 +1,11 @@
 import {
   FaCalendarCheck,
   FaChartLine,
-  FaCog,
   FaFileImport,
   FaFlag,
   FaHome,
   FaListAlt,
+  FaPaperPlane,
   FaPercentage,
   FaReceipt,
   FaUserShield,
@@ -21,16 +21,47 @@ export type NavLinkItem = {
   roles: UserRole[];
 };
 
-export const NAV_LINKS: NavLinkItem[] = [
-  { to: "/", label: "Painel", icon: FaHome, end: true, roles: ["admin"] },
-  { to: "/fluxo", label: "Fluxo de caixa", icon: FaChartLine, roles: ["admin", "tesoureiro"] },
-  { to: "/mensalidades", label: "Mensalidades", icon: FaCalendarCheck, roles: ["admin", "tesoureiro"] },
-  { to: "/tipos", label: "Tipos de movimentação", icon: FaListAlt, roles: ["admin", "tesoureiro"] },
-  { to: "/taxas", label: "Taxas", icon: FaPercentage, roles: ["admin", "tesoureiro"] },
-  { to: "/projetos", label: "Projetos financeiros", icon: FaFlag, roles: ["admin"] },
-  { to: "/relatorios", label: "Relatório fiscal", icon: FaReceipt, roles: ["admin"] },
-  { to: "/configuracoes", label: "Configurações", icon: FaCog, roles: ["admin"] },
-  { to: "/associados", label: "Associados", icon: FaUsers, roles: ["admin", "tesoureiro"] },
-  { to: "/usuarios", label: "Usuários", icon: FaUserShield, roles: ["admin"] },
-  { to: "/integracao", label: "Integração", icon: FaFileImport, roles: ["admin", "tesoureiro"] },
+export type NavSection = {
+  id: string;
+  label: string;
+  items: NavLinkItem[];
+};
+
+export const NAV_SECTIONS: NavSection[] = [
+  {
+    id: "painel",
+    label: "Painel",
+    items: [{ to: "/", label: "Dashboard", icon: FaHome, end: true, roles: ["admin"] }],
+  },
+  {
+    id: "movimentacoes",
+    label: "Movimentações",
+    items: [
+      { to: "/fluxo", label: "Fluxo de caixa", icon: FaChartLine, roles: ["admin", "tesoureiro"] },
+      { to: "/mensalidades", label: "Mensalidade", icon: FaCalendarCheck, roles: ["admin", "tesoureiro"] },
+      { to: "/tipos", label: "Tipo de movimentação", icon: FaListAlt, roles: ["admin", "tesoureiro"] },
+      { to: "/taxas", label: "Taxa", icon: FaPercentage, roles: ["admin", "tesoureiro"] },
+      { to: "/projetos", label: "Projeto financeiro", icon: FaFlag, roles: ["admin"] },
+    ],
+  },
+  {
+    id: "pessoas",
+    label: "Pessoas",
+    items: [
+      { to: "/associados", label: "Associados", icon: FaUsers, roles: ["admin", "tesoureiro"] },
+      { to: "/usuarios", label: "Usuários", icon: FaUserShield, roles: ["admin"] },
+    ],
+  },
+  {
+    id: "configuracoes",
+    label: "Configurações",
+    items: [
+      { to: "/relatorios", label: "Relatório", icon: FaReceipt, roles: ["admin"] },
+      { to: "/integracao", label: "Integrações", icon: FaFileImport, roles: ["admin", "tesoureiro"] },
+      { to: "/configuracoes", label: "Disparos de mensagem", icon: FaPaperPlane, roles: ["admin"] },
+    ],
+  },
 ];
+
+/** Lista plana — útil em testes e redirects. */
+export const NAV_LINKS: NavLinkItem[] = NAV_SECTIONS.flatMap((section) => section.items);

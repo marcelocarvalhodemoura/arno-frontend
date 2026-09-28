@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { collapseMappedMembers, mapMemberRow, mapMemberTable, mapTxRow, parseCsv, parseIsoDate, parseBranch, parseTxType } from "@/shared/lib/csv";
+import {
+  collapseMappedMembers,
+  mapMemberRow,
+  mapMemberTable,
+  mapTxRow,
+  parseCsv,
+  parseIsoDate,
+  parseBranch,
+  parseTxType,
+} from "@/shared/lib/csv";
 
 const csv = `nome;email;telefone;ramo;papel;mensalidade;ingresso;clube_ltc
 João da Silva;joao.silva@arnofriedrich.org.br;(51) 99999-1111;Escoteiro;jovem;60,00;01/03/2026;não
@@ -221,7 +230,8 @@ describe("mapMemberRow", () => {
   });
 
   it("reads the responsáveis/associados/ramos spreadsheet layout", () => {
-    const table = parseCsv(`Associado;Email;Telefone;Clube L;Mensalidade;Papel;Ramo;Ingresso;Responsável;Parent;Telefone2;email2;Resp2;Parent2;Telefone3;Email
+    const table =
+      parseCsv(`Associado;Email;Telefone;Clube L;Mensalidade;Papel;Ramo;Ingresso;Responsável;Parent;Telefone2;email2;Resp2;Parent2;Telefone3;Email
 Ana Souza;ana@arnofriedrich.org.br;(51) 99999-1001;não;55;Jovem;Lobinho;45321;Helena Souza;Mãe;(51) 99999-1002;helena@arnofriedrich.org.br;Carlos Souza;Pai;(51) 99999-1003;
 Bruno Lima;bruno@arnofriedrich.org.br;(51) 99999-2002;sim;0;Adulta;CFL;11/03/2023;;;;;;;
 Carla Dias;carla@arnofriedrich.org.br;(51) 99999-3003;não;0;Adulto;DIRETORIA;;;;;;;;
@@ -308,5 +318,14 @@ describe("splitAfterHeader", () => {
     const data = parts.flatMap((part) => part.split("\n").slice(1));
     expect(data).toHaveLength(450);
     expect(new Set(data).size).toBe(450);
+  });
+
+  it("keeps identical statement lines", async () => {
+    const { splitAfterHeader } = await import("@/modules/statement/import-chunks");
+    const header = "data;historico;valor;tipo";
+    const line = "14/09/2026;RECEBIMENTO PIX Camilla PIX_CRED;55,00;entrada";
+    const { parts } = splitAfterHeader([header, line, line].join("\n"), 0);
+    const data = parts.flatMap((part) => part.split("\n").slice(1));
+    expect(data).toHaveLength(2);
   });
 });

@@ -62,7 +62,7 @@ export default function Dashboard() {
     <FetchOverlay active={loading} label="Atualizando painel…">
       <div>
         <PageHeader
-          kicker="Painel"
+          kicker="Dashboard"
           title="Indicadores da tesouraria"
           subtitle={`Totais, associados e o caixa do grupo em ${periodLabel}.`}
         />

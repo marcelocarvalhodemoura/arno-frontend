@@ -1,3 +1,4 @@
+import { ALL_BRANCHES, type BranchId } from "@/domain";
 import { formatSplitBeneficiaries, type SplitPeerSummary } from "./split-description";
 
 export type SplitDisplayPart = SplitPeerSummary & {
@@ -6,6 +7,12 @@ export type SplitDisplayPart = SplitPeerSummary & {
   paidAt?: string | null;
   type?: "income" | "expense";
 };
+
+/** Ramos distintos das partes do rateio, na ordem canônica do domínio. */
+export function uniqueSplitBranches(parts: { branch: BranchId }[]): BranchId[] {
+  const seen = new Set(parts.map((part) => part.branch));
+  return ALL_BRANCHES.filter((id) => seen.has(id));
+}
 
 export type CashFlowDisplayRow =
   | { kind: "single"; id: string; txId: string }

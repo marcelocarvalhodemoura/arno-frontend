@@ -33,6 +33,9 @@ import {
   FaCheck,
   FaChevronDown,
   FaClock,
+  FaExpand,
+  FaFileAlt,
+  FaPaperclip,
   FaPen,
   FaTag,
   FaTrashAlt,
@@ -41,6 +44,8 @@ import {
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/shared/feedback/toast";
 import { api } from "@/core/http";
+import NotaViewer from "@/features/cash-flow/NotaViewer";
+import NotaUploadModal from "@/features/cash-flow/NotaUploadModal";
 import {
   brl,
   formatDate,
@@ -64,7 +69,9 @@ import { useFetch } from "@/shared/hooks/use-fetch";
 import { isMensalidadeName, isUnidentifiedName, natureForTypeName } from "@/domain/movement";
 import { clearIdentifyFlag, readIdentifyFlag } from "@/core/session/identify-flag";
 import { buildSplitPartDescription } from "@/features/cash-flow/split-description";
-import { buildCashFlowDisplayRows, splitGroupLabel } from "@/features/cash-flow/split-display";
+import { buildCashFlowDisplayRows, splitGroupLabel, uniqueSplitBranches } from "@/features/cash-flow/split-display";
+import { sortCashFlowDisplayRows, type CashFlowSortKey } from "@/features/cash-flow/sort-display";
+import SortableTh, { nextSortDir, type SortDir } from "@/shared/ui/SortableTh";
 
 type Flow = {
   opening: number;
@@ -83,6 +90,7 @@ type TxView = Transaction & {
   guardian: MemberGuardian | null;
   createdByUser: StampUser;
   updatedByUser: StampUser;
+  hasNota?: boolean;
 };
 
 type SplitPartDraft = {
@@ -147,7 +155,19 @@ export default function CashFlow() {
   const [splitEditing, setSplitEditing] = useState(false);
   const [splitParts, setSplitParts] = useState<SplitPartDraft[]>([]);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set());
+  const [notaFile, setNotaFile] = useState<File | null>(null);
+  const [clearNota, setClearNota] = useState(false);
+  const [viewingNota, setViewingNota] = useState<TxView | null>(null);
+  const [uploadingNota, setUploadingNota] = useState<TxView | null>(null);
+  const [sortKey, setSortKey] = useState<CashFlowSortKey>("dueDate");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
   const reduceMotion = useReducedMotion();
+
+  async function uploadNota(transactionId: string, file: File) {
+    const body = new FormData();
+    body.append("file", file);
+    await api(`/transactions/${transactionId}/nota`, { method: "POST", body });
+  }
 
   const unidentifiedTypeIds = useMemo(
     () => new Set((types.data ?? []).filter((item) => isUnidentifiedName(item.name)).map((item) => item.id)),
@@ -226,7 +246,7 @@ export default function CashFlow() {
 
   const displayRows = useMemo(() => {
     const searchActive = Boolean(query.trim());
-    return buildCashFlowDisplayRows(
+    const rows = buildCashFlowDisplayRows(
       periodSource.map((t) => ({
         id: t.id,
         splitGroupId: t.splitGroupId,
@@ -244,7 +264,13 @@ export default function CashFlow() {
       matchedIds,
       searchActive,
     );
-  }, [periodSource, matchedIds, query]);
+    return sortCashFlowDisplayRows(rows, txById, sortKey, sortDir);
+  }, [periodSource, matchedIds, query, txById, sortKey, sortDir]);
+
+  function toggleSort(column: CashFlowSortKey) {
+    setSortDir((current) => nextSortDir(current, sortKey === column));
+    setSortKey(column);
+  }
 
   useEffect(() => {
     const forced = displayRows
@@ -300,6 +326,8 @@ export default function CashFlow() {
       rateioFilter,
       from,
       to,
+      sortKey,
+      sortDir,
       wantsUnidentified ? "year" : "period",
     ].join("|"),
   );
@@ -349,6 +377,8 @@ export default function CashFlow() {
     setIdentifyIndex(0);
     setEditing(null);
     setForm(blankForm(year, month));
+    setNotaFile(null);
+    setClearNota(false);
     setError(null);
     setAttempted(false);
   }
@@ -416,6 +446,8 @@ export default function CashFlow() {
     setIdentifyQueue([]);
     setEditing(null);
     setForm(blankForm(year, month));
+    setNotaFile(null);
+    setClearNota(false);
     setError(null);
     setAttempted(false);
     setOpen(true);
@@ -443,6 +475,8 @@ export default function CashFlow() {
       memberGuardianId: tx.memberGuardianId ?? "",
       projectId: tx.projectId ?? "",
     });
+    setNotaFile(null);
+    setClearNota(false);
     setError(null);
     setAttempted(false);
     setOpen(true);
@@ -477,9 +511,15 @@ export default function CashFlow() {
           method: "PATCH",
           body: JSON.stringify(payload),
         });
+        if (clearNota && (editing.hasNota || editing.notaKey) && !notaFile) {
+          await api(`/transactions/${editing.id}/nota`, { method: "DELETE" });
+        }
+        if (notaFile) {
+          await uploadNota(editing.id, notaFile);
+        }
         toast.success("Lançamento alterado com sucesso.");
       } else {
-        await api("/transactions", {
+        const created = await api<{ id: string }>("/transactions", {
           method: "POST",
           body: JSON.stringify({
             ...payload,
@@ -489,6 +529,9 @@ export default function CashFlow() {
             projectId: form.projectId || undefined,
           }),
         });
+        if (notaFile) {
+          await uploadNota(created.id, notaFile);
+        }
         toast.success("Lançamento cadastrado com sucesso.");
       }
       closeForm();
@@ -788,9 +831,21 @@ export default function CashFlow() {
                 {t.splitCount ? `/${t.splitCount}` : ""}
               </Badge>
               <strong>{t.description}</strong>
+              {t.hasNota || t.notaKey ? (
+                <span className="nota-flag" title={t.notaFileName || "Nota anexada"}>
+                  <FaFileAlt aria-hidden /> Nota
+                </span>
+              ) : null}
             </div>
           ) : (
-            <strong>{t.description}</strong>
+            <div className="tx-desc-row">
+              <strong>{t.description}</strong>
+              {t.hasNota || t.notaKey ? (
+                <span className="nota-flag" title={t.notaFileName || "Nota anexada"}>
+                  <FaFileAlt aria-hidden /> Nota
+                </span>
+              ) : null}
+            </div>
           )}
           <div className="muted">
             {t.member ? `${t.member.name} · ` : ""}
@@ -840,6 +895,15 @@ export default function CashFlow() {
           <IconButton label="Alterar lançamento" onClick={() => openEdit(t)}>
             <FaPen />
           </IconButton>
+          {t.hasNota || t.notaKey ? (
+            <IconButton label="Ver nota ampliada" onClick={() => setViewingNota(t)}>
+              <FaExpand />
+            </IconButton>
+          ) : (
+            <IconButton label="Anexar nota de conciliação" onClick={() => setUploadingNota(t)}>
+              <FaPaperclip />
+            </IconButton>
+          )}
           {options.allowSplit ? (
             <IconButton label="Ratear lançamento" onClick={() => openSplit(t)}>
               <FaCodeBranch />
@@ -868,7 +932,7 @@ export default function CashFlow() {
       <PageHeader
         kicker="Fluxo de caixa"
         title="Entradas e saídas"
-        subtitle="Lançamentos do caixa com conciliação: pago em verde, pendente em amarelo e vencido em vermelho. O Pix do Sicredi entra sozinho; linhas sem tipo ficam para identificar."
+        subtitle="Lançamentos do caixa com conciliação: pago em verde e não conciliado (pendente ou vencido) em azul. O Pix do Sicredi entra sozinho; linhas sem tipo ficam para identificar."
         actions={
           <div className="page-head__actions">
             {sicredi.data?.configured ? (
@@ -1013,14 +1077,45 @@ export default function CashFlow() {
               <table className="data">
                 <thead>
                   <tr>
-                    <th>Vencimento</th>
-                    <th>Pagamento</th>
-                    <th>Lançamento</th>
-                    <th>Tipo</th>
-                    <th>Ramo</th>
-                    <th>Natureza</th>
-                    <th>Conciliação</th>
-                    <th className="num">Valor</th>
+                    <SortableTh
+                      label="Vencimento"
+                      column="dueDate"
+                      active={sortKey}
+                      dir={sortDir}
+                      onSort={toggleSort}
+                    />
+                    <SortableTh
+                      label="Movimentação"
+                      column="paidDate"
+                      active={sortKey}
+                      dir={sortDir}
+                      onSort={toggleSort}
+                    />
+                    <SortableTh
+                      label="Lançamento"
+                      column="description"
+                      active={sortKey}
+                      dir={sortDir}
+                      onSort={toggleSort}
+                    />
+                    <SortableTh label="Tipo" column="movementType" active={sortKey} dir={sortDir} onSort={toggleSort} />
+                    <SortableTh label="Ramo" column="branch" active={sortKey} dir={sortDir} onSort={toggleSort} />
+                    <SortableTh label="Natureza" column="nature" active={sortKey} dir={sortDir} onSort={toggleSort} />
+                    <SortableTh
+                      label="Conciliação"
+                      column="settlement"
+                      active={sortKey}
+                      dir={sortDir}
+                      onSort={toggleSort}
+                    />
+                    <SortableTh
+                      label="Valor"
+                      column="amount"
+                      active={sortKey}
+                      dir={sortDir}
+                      onSort={toggleSort}
+                      align="right"
+                    />
                     <th className="cell-actions">Ações</th>
                   </tr>
                 </thead>
@@ -1091,8 +1186,14 @@ export default function CashFlow() {
                               <Badge kind={row.type}>{typeLabelText}</Badge>
                             </td>
                             <td>
-                              <span className="branch-dot" style={{ background: colorOf(parts[0].branch) }} />{" "}
-                              {BRANCH_LABELS[parts[0].branch]}
+                              <div className="tx-split-branches">
+                                {uniqueSplitBranches(parts).map((branch) => (
+                                  <span key={branch} className="tx-split-branches__item">
+                                    <span className="branch-dot" style={{ background: colorOf(branch) }} />{" "}
+                                    {BRANCH_LABELS[branch]}
+                                  </span>
+                                ))}
+                              </div>
                             </td>
                             <td>
                               <Badge kind={parts[0].nature}>{natureLabel(parts[0].nature)}</Badge>
@@ -1387,6 +1488,43 @@ export default function CashFlow() {
                   <option value="other">Outro</option>
                 </select>
               </label>
+              <label className="field wide">
+                <span>Nota (PDF ou imagem)</span>
+                <input
+                  type="file"
+                  accept="application/pdf,image/jpeg,image/png,image/webp,image/gif"
+                  onChange={(e) => {
+                    setNotaFile(e.target.files?.[0] ?? null);
+                    setClearNota(false);
+                  }}
+                />
+                {notaFile ? (
+                  <small className="muted">
+                    <FaFileAlt aria-hidden /> {notaFile.name}
+                  </small>
+                ) : editing && (editing.hasNota || editing.notaKey) && !clearNota ? (
+                  <small className="nota-attached">
+                    <FaFileAlt aria-hidden /> {editing.notaFileName || "Nota anexada"}
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => setViewingNota(editing)}>
+                      Ver ampliada
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => {
+                        setClearNota(true);
+                        setNotaFile(null);
+                      }}
+                    >
+                      Remover
+                    </button>
+                  </small>
+                ) : clearNota ? (
+                  <small className="muted">A nota será removida ao salvar.</small>
+                ) : (
+                  <small className="muted">Opcional. Até 10 MB.</small>
+                )}
+              </label>
               <p className="muted wide">
                 Natureza: {natureLabel(form.nature)} · {typeLabel(form.type)}
                 {selectedMember ? ` · ${selectedMember.name}` : ""}
@@ -1624,6 +1762,25 @@ export default function CashFlow() {
               </div>
             </form>
           </Modal>
+        ) : null}
+        {viewingNota ? (
+          <NotaViewer
+            key={`nota-${viewingNota.id}`}
+            transactionId={viewingNota.id}
+            fileName={viewingNota.notaFileName}
+            onClose={() => setViewingNota(null)}
+          />
+        ) : null}
+        {uploadingNota ? (
+          <NotaUploadModal
+            key={`upload-${uploadingNota.id}`}
+            tx={uploadingNota}
+            onClose={() => setUploadingNota(null)}
+            onUploaded={() => {
+              toast.success("Nota anexada ao lançamento.");
+              void Promise.all([flow.reload(), txs.reload(), yearTxs.reload()]);
+            }}
+          />
         ) : null}
       </AnimatePresence>
     </div>

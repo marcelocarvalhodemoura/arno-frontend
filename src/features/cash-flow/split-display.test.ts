@@ -1,5 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { buildCashFlowDisplayRows, splitGroupLabel } from "./split-display";
+import { buildCashFlowDisplayRows, splitGroupLabel, uniqueSplitBranches } from "./split-display";
+
+describe("uniqueSplitBranches", () => {
+  it("lists distinct branches in canonical order", () => {
+    expect(uniqueSplitBranches([{ branch: "senior" }, { branch: "lobinho" }, { branch: "senior" }])).toEqual([
+      "lobinho",
+      "senior",
+    ]);
+  });
+
+  it("keeps a single branch when all parts share it", () => {
+    expect(uniqueSplitBranches([{ branch: "escoteiro" }, { branch: "escoteiro" }])).toEqual(["escoteiro"]);
+  });
+});
 
 describe("splitGroupLabel", () => {
   it("strips automatic rateio suffix from part descriptions", () => {

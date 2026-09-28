@@ -57,8 +57,10 @@ export async function postImportChunks<T>(
   onProgress?: (current: number, total: number) => void,
   options?: { importSource?: "csv" | "pdf" },
 ): Promise<ChunkImportResult> {
-  const unique = uniqueItems(rows, persistKey);
-  const chunks = chunkList(unique, IMPORT_CHUNK_SIZE);
+  // Extrato (csv/pdf) pode ter dois PIX iguais no mesmo dia — não colapsar.
+  // Associados ainda deduplicam por e-mail.
+  const source = options?.importSource ? rows : uniqueItems(rows, persistKey);
+  const chunks = chunkList(source, IMPORT_CHUNK_SIZE);
   const acc: ChunkImportResult = { created: 0, updated: 0, paid: 0, unidentified: 0, skipped: [] };
   for (let index = 0; index < chunks.length; index += 1) {
     onProgress?.(index + 1, chunks.length);
@@ -177,9 +179,8 @@ export async function interpretStatementFile(
     lineOffset += Math.max(0, csvLineList(planned.parts[index] ?? "").length - 1);
   }
 
-  const uniqueRows = uniqueItems(rows, statementKey);
   if (sample) {
-    sample = { ...sample, totalRows: Math.max(sample.totalRows, uniqueRows.length) };
+    sample = { ...sample, totalRows: Math.max(sample.totalRows, rows.length) };
   }
   return {
     layout,
@@ -190,7 +191,7 @@ export async function interpretStatementFile(
     sample,
     review,
     truncated: planned.truncated,
-    rows: uniqueRows,
+    rows,
   };
 }
 
@@ -202,8 +203,7 @@ export function splitAfterHeader(csv: string, headerIndex: number, size = IMPORT
   const truncated = lines.length - dataStart > IMPORT_MAX_ROWS;
   const limited = truncated ? lines.slice(0, dataStart + IMPORT_MAX_ROWS) : lines;
   const data = limited.slice(dataStart).filter((line) => line.trim() && !sameCsvLine(line, headerLine));
-  const uniqueData = uniqueItems(data, (line) => fold(line));
-  const parts = chunkList(uniqueData, size).map((chunk) => [headerLine, ...chunk].join("\n"));
+  const parts = chunkList(data, size).map((chunk) => [headerLine, ...chunk].join("\n"));
   return { parts: parts.length ? parts : [headerLine].filter(Boolean), truncated };
 }
 

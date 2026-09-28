@@ -4,7 +4,7 @@ import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { FaAngleLeft, FaAngleRight, FaSignOutAlt } from "react-icons/fa";
 import logo from "@/shared/assets/arno_logo.png";
 import { useAuth } from "@/features/auth";
-import { NAV_LINKS } from "@/features/layout/nav-links";
+import { NAV_SECTIONS } from "@/features/layout/nav-links";
 import { MONTHS } from "@/shared/lib/format";
 import { duration, ease } from "@/shared/lib/motion";
 import type { Period } from "@/shared/hooks/use-period";
@@ -23,7 +23,10 @@ function readCollapsed() {
 export default function Layout({ year, month, setYear, setMonth }: Period) {
   const location = useLocation();
   const { user, name, role, logout } = useAuth();
-  const visible = NAV_LINKS.filter((link) => role && link.roles.includes(role));
+  const sections = NAV_SECTIONS.map((section) => ({
+    ...section,
+    items: section.items.filter((link) => role && link.roles.includes(role)),
+  })).filter((section) => section.items.length > 0);
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const roleLabel = role === "admin" ? "Administrador" : "Tesoureiro";
 
@@ -61,17 +64,26 @@ export default function Layout({ year, month, setYear, setMonth }: Period) {
           {collapsed ? <FaAngleRight /> : <FaAngleLeft />}
         </button>
         <nav id="sidebar-nav" aria-label="Tesouraria">
-          {visible.map((link) => (
-            <NavLink
-              key={link.to}
-              to={link.to}
-              end={link.end}
-              title={link.label}
-              className={({ isActive }) => `side-link ${isActive ? "is-active" : ""}`}
-            >
-              <link.icon />
-              <span className="side-link__label">{link.label}</span>
-            </NavLink>
+          {sections.map((section) => (
+            <div key={section.id} className="side-section">
+              <p className="side-section__label" aria-hidden={collapsed || undefined}>
+                {section.label}
+              </p>
+              <div className="side-section__links" role="group" aria-label={section.label}>
+                {section.items.map((link) => (
+                  <NavLink
+                    key={link.to}
+                    to={link.to}
+                    end={link.end}
+                    title={link.label}
+                    className={({ isActive }) => `side-link ${isActive ? "is-active" : ""}`}
+                  >
+                    <link.icon />
+                    <span className="side-link__label">{link.label}</span>
+                  </NavLink>
+                ))}
+              </div>
+            </div>
           ))}
         </nav>
         <div className="sidebar__foot">
