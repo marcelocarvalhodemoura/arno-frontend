@@ -2,6 +2,7 @@ import { useMemo, useState, type FormEvent } from "react";
 import type { Fee } from "@/domain";
 import RecordStamp from "@/shared/ui/RecordStamp";
 import PageHeader from "@/shared/ui/PageHeader";
+import { PageGuide, feesGuide } from "@/features/help";
 import Modal from "@/shared/ui/Modal";
 import PageLoader from "@/shared/ui/PageLoader";
 import FetchOverlay from "@/shared/ui/FetchOverlay";
@@ -19,6 +20,8 @@ import { matchesQuery, usePagedList } from "@/shared/lib/listing";
 import { formatMoney, maskMoney, parseMoney } from "@/shared/lib/masks";
 import { formClass, submitAttempt } from "@/shared/lib/form";
 import { useFetch } from "@/shared/hooks/use-fetch";
+import { useFlashId } from "@/shared/hooks/use-flash-id";
+import { AnimatedRow, AnimatedTableBody } from "@/shared/ui/AnimatedTable";
 
 type FeeView = Fee & {
   createdByUser?: { name: string; username?: string } | null;
@@ -30,6 +33,7 @@ const empty = { name: "", amount: "" };
 export default function Fees() {
   const toast = useToast();
   const list = useFetch<FeeView[]>("/fees");
+  const [flashId, flash] = useFlashId();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<FeeView | null>(null);
   const [form, setForm] = useState(empty);
@@ -78,12 +82,14 @@ export default function Fees() {
           method: "PATCH",
           body: JSON.stringify({ name: form.name, amount }),
         });
+        flash(editing.id);
         toast.success("Taxa alterada com sucesso.");
       } else {
-        await api("/fees", {
+        const created = await api<{ id: string }>("/fees", {
           method: "POST",
           body: JSON.stringify({ name: form.name, amount }),
         });
+        flash(created.id);
         toast.success("Taxa cadastrada com sucesso.");
       }
       closeForm();
@@ -114,9 +120,12 @@ export default function Fees() {
         title="Taxas"
         subtitle="Tabela oficial da mensalidade (base, extra de não sócio, pontualidade e atraso). Outras taxas do grupo continuam neste cadastro."
         actions={
-          <button className="btn btn-primary" type="button" onClick={openCreate}>
-            Nova taxa
-          </button>
+          <div className="page-head__actions">
+            <PageGuide guide={feesGuide} />
+            <button className="btn btn-primary" type="button" onClick={openCreate}>
+              Nova taxa
+            </button>
+          </div>
         }
       />
 
@@ -138,39 +147,31 @@ export default function Fees() {
                     <th className="cell-actions">Ações</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {listing.pageRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={3} className="muted">
-                        Nenhuma taxa com esses filtros.
+                <AnimatedTableBody emptyColSpan={3} emptyMessage="Nenhuma taxa com esses filtros.">
+                  {listing.pageRows.map((fee, index) => (
+                    <AnimatedRow key={fee.id} index={index} flash={flashId === fee.id}>
+                      <td>
+                        <strong>{fee.name}</strong>
+                        <RecordStamp
+                          origin={fee.origin}
+                          createdAt={fee.createdAt}
+                          createdBy={fee.createdByUser}
+                          updatedAt={fee.updatedAt}
+                          updatedBy={fee.updatedByUser}
+                        />
                       </td>
-                    </tr>
-                  ) : (
-                    listing.pageRows.map((fee) => (
-                      <tr key={fee.id}>
-                        <td>
-                          <strong>{fee.name}</strong>
-                          <RecordStamp
-                            origin={fee.origin}
-                            createdAt={fee.createdAt}
-                            createdBy={fee.createdByUser}
-                            updatedAt={fee.updatedAt}
-                            updatedBy={fee.updatedByUser}
-                          />
-                        </td>
-                        <td className="num">{brl(fee.amount)}</td>
-                        <td className="cell-actions">
-                          <IconButton label="Alterar taxa" onClick={() => openEdit(fee)}>
-                            <FaPen />
-                          </IconButton>
-                          <IconButton label="Excluir taxa" tone="danger" onClick={() => void remove(fee)}>
-                            <FaTrashAlt />
-                          </IconButton>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
+                      <td className="num">{brl(fee.amount)}</td>
+                      <td className="cell-actions">
+                        <IconButton label="Alterar taxa" onClick={() => openEdit(fee)}>
+                          <FaPen />
+                        </IconButton>
+                        <IconButton label="Excluir taxa" tone="danger" onClick={() => void remove(fee)}>
+                          <FaTrashAlt />
+                        </IconButton>
+                      </td>
+                    </AnimatedRow>
+                  ))}
+                </AnimatedTableBody>
               </table>
             </div>
             <Pager

@@ -12,18 +12,23 @@ import {
 } from "@/domain";
 import PageHeader from "@/shared/ui/PageHeader";
 import StatCard, { Badge } from "@/shared/ui/StatCard";
+import { PageGuide, mensalidadesGuide } from "@/features/help";
 import PageLoader from "@/shared/ui/PageLoader";
 import FetchOverlay from "@/shared/ui/FetchOverlay";
 import ListingResults from "@/shared/ui/ListingResults";
 import FilterBar from "@/shared/ui/FilterBar";
+import { PeriodField } from "@/shared/ui/PeriodControl";
 import Pager from "@/shared/ui/Pager";
 import Modal from "@/shared/ui/Modal";
 import SubmitButton from "@/shared/ui/SubmitButton";
+import SearchableSelect from "@/shared/ui/SearchableSelect";
 import { AnimatePresence } from "framer-motion";
 import { brl, formatDate, MONTHS, roleLabel, settlementLabel, todayISO } from "@/shared/lib/format";
 import { matchesQuery, usePagedList } from "@/shared/lib/listing";
 import { usePeriod } from "@/shared/lib/period";
 import { useFetch } from "@/shared/hooks/use-fetch";
+import { useFlashId } from "@/shared/hooks/use-flash-id";
+import { AnimatedRow, AnimatedTableBody } from "@/shared/ui/AnimatedTable";
 import { api } from "@/core/http";
 import { useToast } from "@/shared/feedback/toast";
 
@@ -33,9 +38,10 @@ const SCOUT_MONTHS = [3, 4, 5, 6, 7, 8, 9, 10, 11];
 export default function Mensalidades() {
   const navigate = useNavigate();
   const toast = useToast();
-  const { year, month, setMonth } = usePeriod();
+  const { year, month, setYear, setMonth } = usePeriod();
   const list = useFetch<MensalidadeReport>(`/mensalidades?year=${year}`);
   const channels = useFetch<{ email: boolean; whatsapp: boolean }>("/notify/status");
+  const [flashId, flash] = useFlashId();
   const [query, setQuery] = useState("");
   const [branch, setBranch] = useState<YouthBranchId | "">("");
   const [statusFilter, setStatusFilter] = useState<MemberStatus | "">("active");
@@ -156,6 +162,67 @@ export default function Mensalidades() {
       .filter((item): item is { row: MensalidadeRow; cell: MensalidadeCell } => Boolean(item));
   }, [picked, rows]);
 
+  /** Outros meses em aberto do mesmo jovem (adiantamento). */
+  const otherOpenMonths = useMemo(() => {
+    if (!picked || picked.cell.status === "paid" || picked.cell.status === "none") return [];
+    return picked.row.cells.filter(
+      (cell) =>
+        cell.month !== picked.cell.month &&
+        cell.status !== "paid" &&
+        cell.status !== "none" &&
+        Boolean(cell.transactionId),
+    );
+  }, [picked]);
+
+  const alsoSettleExtras = useMemo(() => {
+    if (!picked) return { months: 0, siblings: 0, amountOnTime: 0, amountLate: 0 };
+    const siblingIds = new Set(siblingOpenCells.map(({ cell }) => cell.transactionId!));
+    const monthIds = new Set(otherOpenMonths.map((cell) => cell.transactionId!));
+    let months = 0;
+    let siblings = 0;
+    let amountOnTime = 0;
+    let amountLate = 0;
+    for (const id of alsoSettleIds) {
+      if (monthIds.has(id)) {
+        months += 1;
+        const cell = otherOpenMonths.find((item) => item.transactionId === id);
+        if (cell) {
+          amountOnTime += cell.onTimeAmount;
+          amountLate += cell.lateAmount;
+        }
+      } else if (siblingIds.has(id)) {
+        siblings += 1;
+        const hit = siblingOpenCells.find(({ cell }) => cell.transactionId === id);
+        if (hit) {
+          amountOnTime += hit.cell.onTimeAmount;
+          amountLate += hit.cell.lateAmount;
+        }
+      }
+    }
+    return { months, siblings, amountOnTime, amountLate };
+  }, [picked, alsoSettleIds, otherOpenMonths, siblingOpenCells]);
+
+  function settleExtraLabel(timing: "on_time" | "late") {
+    if (!picked) return "";
+    const total =
+      (timing === "late" ? picked.cell.lateAmount : picked.cell.onTimeAmount) +
+      (timing === "late" ? alsoSettleExtras.amountLate : alsoSettleExtras.amountOnTime);
+    const parts: string[] = [];
+    const count = 1 + alsoSettleIds.length;
+    if (alsoSettleExtras.months && alsoSettleExtras.siblings) {
+      parts.push(`${count} mensalidades`);
+    } else if (alsoSettleExtras.months) {
+      parts.push(`${1 + alsoSettleExtras.months} meses`);
+    } else if (alsoSettleExtras.siblings) {
+      parts.push(`${1 + alsoSettleExtras.siblings} jovens`);
+    }
+    return parts.length ? ` (${parts.join(" · ")} · ${brl(total)})` : ` (${brl(total)})`;
+  }
+
+  function toggleAlsoSettle(id: string, checked: boolean) {
+    setAlsoSettleIds((current) => (checked ? [...current, id] : current.filter((item) => item !== id)));
+  }
+
   async function settle(timing: "on_time" | "late") {
     if (!picked?.cell.transactionId) return;
     const paidAt = paidAtDraft || todayISO();
@@ -197,6 +264,7 @@ export default function Mensalidades() {
           ? `Mensalidade registrada como ${label} (${brl(tx.amount)})`
           : `${count} mensalidades registradas como ${label} (${brl(tx.amount)})`;
       toast.success(notifyParts.length ? `${base}. ${notifyParts.join(" · ")}.` : `${base}.`);
+      if (picked) flash(picked.row.memberId);
       setPicked(null);
       setAlsoSettleIds([]);
       await list.reload();
@@ -276,13 +344,9 @@ export default function Mensalidades() {
         title={`Ano escoteiro ${year}`}
         subtitle={`Março a novembro. Mar/abr: R$ 60 (R$ 15 pioneiros). A partir de maio: cartaz atual com taxa do clube e diluição. Vencimento todo dia ${dueDay}.`}
         actions={
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" }}>
-            <button
-              className="btn btn-outline"
-              type="button"
-              disabled={busy}
-              onClick={() => void setClubFeeBulk(true)}
-            >
+          <div className="page-head__actions">
+            <PageGuide guide={mensalidadesGuide} />
+            <button className="btn btn-outline" type="button" disabled={busy} onClick={() => void setClubFeeBulk(true)}>
               Incluir clube · {MONTHS[chargeMonth - 1]}
             </button>
             <button
@@ -315,6 +379,7 @@ export default function Mensalidades() {
       <FetchOverlay active={list.loading} label="Atualizando mensalidades…">
         <article className="card">
           <FilterBar>
+            <PeriodField year={year} month={month} setYear={setYear} setMonth={setMonth} />
             <label className="field">
               <span>Buscar</span>
               <input
@@ -347,32 +412,43 @@ export default function Mensalidades() {
             </label>
             <label className="field">
               <span>Ramo</span>
-              <select value={branch} onChange={(e) => setBranch(e.target.value as YouthBranchId | "")}>
-                <option value="">Todos</option>
-                {YOUTH_BRANCHES.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
+              <SearchableSelect
+                value={branch}
+                onChange={(value) => setBranch(value as YouthBranchId | "")}
+                placeholder="Todos"
+                options={[
+                  { value: "", label: "Todos" },
+                  ...YOUTH_BRANCHES.map((item) => ({ value: item.id, label: item.name })),
+                ]}
+              />
             </label>
             <label className="field">
               <span>Papel</span>
-              <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value as MemberRole | "")}>
-                <option value="">Todos</option>
-                <option value="jovem">Jovem</option>
-                <option value="escotista">Escotista</option>
-                <option value="dirigente">Dirigente</option>
-                <option value="clube">Clube da Flor de Lis</option>
-              </select>
+              <SearchableSelect
+                value={roleFilter}
+                onChange={(value) => setRoleFilter(value as MemberRole | "")}
+                placeholder="Todos"
+                options={[
+                  { value: "", label: "Todos" },
+                  { value: "jovem", label: "Jovem" },
+                  { value: "escotista", label: "Escotista" },
+                  { value: "dirigente", label: "Dirigente" },
+                  { value: "clube", label: "Clube da Flor de Lis" },
+                ]}
+              />
             </label>
             <label className="field">
               <span>Situação do associado</span>
-              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as MemberStatus | "")}>
-                <option value="">Todas</option>
-                <option value="active">Ativo</option>
-                <option value="inactive">Inativo</option>
-              </select>
+              <SearchableSelect
+                value={statusFilter}
+                onChange={(value) => setStatusFilter(value as MemberStatus | "")}
+                placeholder="Todas"
+                options={[
+                  { value: "", label: "Todas" },
+                  { value: "active", label: "Ativo" },
+                  { value: "inactive", label: "Inativo" },
+                ]}
+              />
             </label>
           </FilterBar>
           <ListingResults fetching={list.loading} filtering={listing.busy} fetchLabel="Atualizando mensalidades…">
@@ -394,66 +470,58 @@ export default function Mensalidades() {
                     ))}
                   </tr>
                 </thead>
-                <tbody>
-                  {listing.pageRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={1 + months.length} className="muted">
-                        Nenhum associado com mensalidade nesses filtros.
-                      </td>
-                    </tr>
-                  ) : (
-                    listing.pageRows.map((row) => (
-                      <tr key={row.memberId}>
-                        <td className="fees-grid__name">
-                          <div className="fees-grid__member">
-                            <span
-                              className="branch-dot"
-                              style={{
-                                background:
-                                  YOUTH_BRANCHES.find((item) => item.id === row.branch)?.color ?? "#0c2d6b",
-                              }}
-                              aria-hidden
-                            />
-                            <div>
-                              <strong>{row.name}</strong>
-                              <div className="muted">
-                                {BRANCH_LABELS[row.branch]} · {roleLabel(row.role)}
-                                {row.clubeLtc ? " · sócio Lindóia" : ""}
-                                {row.feeOverride != null
-                                  ? row.chiefChild
-                                    ? " · valor especial · filho de chefe"
-                                    : " · valor especial · irmão no grupo"
-                                  : ""}{" "}
-                                · {brl(row.monthlyFee)}
-                                {row.lateFee !== row.monthlyFee
-                                  ? ` · após dia ${row.dueDay} ${brl(row.lateFee)}`
-                                  : ""}
-                              </div>
-                              <div className="muted">
-                                Vence todo dia {row.dueDay} · ingresso {formatDate(row.joinedAt)}
-                              </div>
+                <AnimatedTableBody
+                  emptyColSpan={1 + months.length}
+                  emptyMessage="Nenhum associado com mensalidade nesses filtros."
+                >
+                  {listing.pageRows.map((row, index) => (
+                    <AnimatedRow key={row.memberId} index={index} flash={flashId === row.memberId}>
+                      <td className="fees-grid__name">
+                        <div className="fees-grid__member">
+                          <span
+                            className="branch-dot"
+                            style={{
+                              background: YOUTH_BRANCHES.find((item) => item.id === row.branch)?.color ?? "#0c2d6b",
+                            }}
+                            aria-hidden
+                          />
+                          <div>
+                            <strong>{row.name}</strong>
+                            <div className="muted">
+                              {BRANCH_LABELS[row.branch]} · {roleLabel(row.role)}
+                              {row.clubeLtc ? " · sócio Lindóia" : ""}
+                              {row.feeOverride != null
+                                ? row.chiefChild
+                                  ? " · valor especial · filho de chefe"
+                                  : " · valor especial · irmão no grupo"
+                                : ""}{" "}
+                              · {brl(row.monthlyFee)}
+                              {row.lateFee !== row.monthlyFee ? ` · após dia ${row.dueDay} ${brl(row.lateFee)}` : ""}
+                            </div>
+                            <div className="muted">
+                              Vence todo dia {row.dueDay} · ingresso {formatDate(row.joinedAt)}
                             </div>
                           </div>
+                        </div>
+                      </td>
+                      {row.cells.map((cell) => (
+                        <td
+                          key={cell.month}
+                          className={`fees-grid__month${year === currentYear && cell.month === currentMonth ? " is-current" : ""}`}
+                        >
+                          <FeeCell
+                            cell={cell}
+                            onOpen={() => {
+                              setPaidAtDraft(todayISO());
+                              setAlsoSettleIds([]);
+                              setPicked({ row, cell });
+                            }}
+                          />
                         </td>
-                        {row.cells.map((cell) => (
-                          <td
-                            key={cell.month}
-                            className={`fees-grid__month${year === currentYear && cell.month === currentMonth ? " is-current" : ""}`}
-                          >
-                            <FeeCell
-                              cell={cell}
-                              onOpen={() => {
-                                setPaidAtDraft(todayISO());
-                                setAlsoSettleIds([]);
-                                setPicked({ row, cell });
-                              }}
-                            />
-                          </td>
-                        ))}
-                      </tr>
-                    ))
-                  )}
-                </tbody>
+                      ))}
+                    </AnimatedRow>
+                  ))}
+                </AnimatedTableBody>
               </table>
             </div>
             <Pager
@@ -483,8 +551,7 @@ export default function Mensalidades() {
               {picked.cell.dueDate ? ` · vence ${formatDate(picked.cell.dueDate)}` : ""}
             </p>
             <p className="muted">
-              Taxa do clube neste mês:{" "}
-              <strong>{picked.cell.clubFeeIncluded ? "incluída" : "removida"}</strong>
+              Taxa do clube neste mês: <strong>{picked.cell.clubFeeIncluded ? "incluída" : "removida"}</strong>
               {picked.row.feeOverride != null
                 ? " (valor especial: a taxa do clube não altera o total)"
                 : picked.row.branch === "pioneiro"
@@ -503,6 +570,29 @@ export default function Mensalidades() {
                   <span>Data do pagamento</span>
                   <input type="date" value={paidAtDraft} onChange={(e) => setPaidAtDraft(e.target.value)} />
                 </label>
+                {otherOpenMonths.length ? (
+                  <fieldset className="field wide" style={{ border: "none", padding: 0, margin: 0 }}>
+                    <legend className="muted" style={{ marginBottom: 8 }}>
+                      Baixar também outros meses (adiantamento)
+                    </legend>
+                    {otherOpenMonths.map((cell) => {
+                      const id = cell.transactionId!;
+                      const checked = alsoSettleIds.includes(id);
+                      return (
+                        <label key={id} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) => toggleAlsoSettle(id, e.target.checked)}
+                          />
+                          <span>
+                            {MONTHS[cell.month - 1]} · {settlementLabel(cell.status)} · {brl(cell.amount)}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </fieldset>
+                ) : null}
                 {siblingOpenCells.length ? (
                   <fieldset className="field wide" style={{ border: "none", padding: 0, margin: 0 }}>
                     <legend className="muted" style={{ marginBottom: 8 }}>
@@ -512,18 +602,11 @@ export default function Mensalidades() {
                       const id = cell.transactionId!;
                       const checked = alsoSettleIds.includes(id);
                       return (
-                        <label
-                          key={id}
-                          style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}
-                        >
+                        <label key={id} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
                           <input
                             type="checkbox"
                             checked={checked}
-                            onChange={(e) =>
-                              setAlsoSettleIds((current) =>
-                                e.target.checked ? [...current, id] : current.filter((item) => item !== id),
-                              )
-                            }
+                            onChange={(e) => toggleAlsoSettle(id, e.target.checked)}
                           />
                           <span>
                             {row.name} · {settlementLabel(cell.status)} · {brl(cell.amount)}
@@ -565,9 +648,7 @@ export default function Mensalidades() {
                   className="btn btn-outline"
                   type="button"
                   disabled={busy || picked.row.branch === "pioneiro" || picked.row.feeOverride != null}
-                  onClick={() =>
-                    void setClubFee(picked.cell.transactionId!, !picked.cell.clubFeeIncluded)
-                  }
+                  onClick={() => void setClubFee(picked.cell.transactionId!, !picked.cell.clubFeeIncluded)}
                 >
                   {picked.cell.clubFeeIncluded ? "Remover taxa do clube" : "Incluir taxa do clube"}
                 </button>
@@ -606,10 +687,7 @@ export default function Mensalidades() {
                         disabled={!picked.cell.transactionId || !paidAtDraft}
                         onClick={() => void settle("on_time")}
                       >
-                        Pagar pontual
-                        {alsoSettleIds.length
-                          ? ` (${1 + alsoSettleIds.length} jovens)`
-                          : ` (${brl(picked.cell.onTimeAmount)})`}
+                        Pagar pontual{settleExtraLabel("on_time")}
                       </SubmitButton>
                       <SubmitButton
                         type="button"
@@ -618,10 +696,7 @@ export default function Mensalidades() {
                         disabled={!picked.cell.transactionId || !paidAtDraft}
                         onClick={() => void settle("late")}
                       >
-                        Pagar com atraso
-                        {alsoSettleIds.length
-                          ? ` (${1 + alsoSettleIds.length} jovens)`
-                          : ` (${brl(picked.cell.lateAmount)})`}
+                        Pagar com atraso{settleExtraLabel("late")}
                       </SubmitButton>
                     </>
                   ) : (
@@ -632,10 +707,7 @@ export default function Mensalidades() {
                       disabled={!picked.cell.transactionId || !paidAtDraft}
                       onClick={() => void settle("on_time")}
                     >
-                      Marcar paga
-                      {alsoSettleIds.length
-                        ? ` (${1 + alsoSettleIds.length} jovens)`
-                        : ` (${brl(picked.cell.onTimeAmount)})`}
+                      Marcar paga{settleExtraLabel("on_time")}
                     </SubmitButton>
                   )}
                 </>
@@ -663,6 +735,7 @@ function FeeCell({ cell, onOpen }: { cell: MensalidadeCell; onOpen: () => void }
     >
       <Badge kind={cell.status}>{settlementLabel(cell.status)}</Badge>
       <small>{brl(cell.amount)}</small>
+      {cell.arrearsInstallment ? <small className="muted">+ dívida {brl(cell.arrearsInstallment)}</small> : null}
       {!cell.clubFeeIncluded ? <small className="muted">sem clube</small> : null}
     </button>
   );

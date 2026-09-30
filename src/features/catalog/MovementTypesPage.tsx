@@ -2,6 +2,7 @@ import { useMemo, useState, type FormEvent } from "react";
 import { ALL_BRANCHES, BRANCH_LABELS, type BranchId, type MovementDirection, type MovementType } from "@/domain";
 import RecordStamp from "@/shared/ui/RecordStamp";
 import PageHeader from "@/shared/ui/PageHeader";
+import { PageGuide, movementTypesGuide } from "@/features/help";
 import Modal from "@/shared/ui/Modal";
 import { Badge } from "@/shared/ui/StatCard";
 import PageLoader from "@/shared/ui/PageLoader";
@@ -11,6 +12,7 @@ import SubmitButton from "@/shared/ui/SubmitButton";
 import FilterBar from "@/shared/ui/FilterBar";
 import Pager from "@/shared/ui/Pager";
 import IconButton from "@/shared/ui/IconButton";
+import SearchableSelect from "@/shared/ui/SearchableSelect";
 import { AnimatePresence } from "framer-motion";
 import { FaBan, FaCheck, FaPen } from "react-icons/fa";
 import { api } from "@/core/http";
@@ -19,6 +21,8 @@ import { directionLabel } from "@/shared/lib/format";
 import { matchesQuery, usePagedList } from "@/shared/lib/listing";
 import { formClass, submitAttempt } from "@/shared/lib/form";
 import { useFetch } from "@/shared/hooks/use-fetch";
+import { useFlashId } from "@/shared/hooks/use-flash-id";
+import { AnimatedRow, AnimatedTableBody } from "@/shared/ui/AnimatedTable";
 
 type TypeView = MovementType & {
   createdByUser?: { name: string; username?: string } | null;
@@ -36,6 +40,7 @@ const empty = {
 export default function MovementTypes() {
   const toast = useToast();
   const list = useFetch<TypeView[]>("/movement-types");
+  const [flashId, flash] = useFlashId();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<TypeView | null>(null);
   const [form, setForm] = useState(empty);
@@ -107,12 +112,14 @@ export default function MovementTypes() {
           method: "PATCH",
           body: JSON.stringify(form),
         });
+        flash(editing.id);
         toast.success("Tipo de movimentação alterado com sucesso.");
       } else {
-        await api("/movement-types", {
+        const created = await api<{ id: string }>("/movement-types", {
           method: "POST",
           body: JSON.stringify(form),
         });
+        flash(created.id);
         toast.success("Tipo de movimentação cadastrado com sucesso.");
       }
       closeForm();
@@ -130,6 +137,7 @@ export default function MovementTypes() {
       body: JSON.stringify({ active: !type.active }),
     });
     await list.reload();
+    flash(type.id);
     toast.success("Tipo de movimentação alterado com sucesso.");
   }
 
@@ -145,9 +153,12 @@ export default function MovementTypes() {
         title="Tipos de movimentação"
         subtitle="Mensalidade, sede, doação e os demais tipos usados em cada lançamento. O ramo diz se o tipo é do grupo inteiro ou de uma seção."
         actions={
-          <button className="btn btn-primary" type="button" onClick={openCreate}>
-            Novo tipo
-          </button>
+          <div className="page-head__actions">
+            <PageGuide guide={movementTypesGuide} />
+            <button className="btn btn-primary" type="button" onClick={openCreate}>
+              Novo tipo
+            </button>
+          </div>
         }
       />
 
@@ -160,37 +171,42 @@ export default function MovementTypes() {
             </label>
             <label className="field">
               <span>Direção</span>
-              <select
+              <SearchableSelect
                 value={directionFilter}
-                onChange={(e) => setDirectionFilter(e.target.value as MovementDirection | "")}
-              >
-                <option value="">Todas</option>
-                <option value="income">Somente entrada</option>
-                <option value="expense">Somente saída</option>
-                <option value="both">Entrada e saída</option>
-              </select>
+                onChange={(value) => setDirectionFilter(value as MovementDirection | "")}
+                placeholder="Todas"
+                options={[
+                  { value: "", label: "Todas" },
+                  { value: "income", label: "Somente entrada" },
+                  { value: "expense", label: "Somente saída" },
+                  { value: "both", label: "Entrada e saída" },
+                ]}
+              />
             </label>
             <label className="field">
               <span>Ramo</span>
-              <select value={branchFilter} onChange={(e) => setBranchFilter(e.target.value as BranchId | "")}>
-                <option value="">Todos</option>
-                {ALL_BRANCHES.map((id) => (
-                  <option key={id} value={id}>
-                    {BRANCH_LABELS[id]}
-                  </option>
-                ))}
-              </select>
+              <SearchableSelect
+                value={branchFilter}
+                onChange={(value) => setBranchFilter(value as BranchId | "")}
+                placeholder="Todos"
+                options={[
+                  { value: "", label: "Todos" },
+                  ...ALL_BRANCHES.map((id) => ({ value: id, label: BRANCH_LABELS[id] })),
+                ]}
+              />
             </label>
             <label className="field">
               <span>Situação</span>
-              <select
+              <SearchableSelect
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as "active" | "inactive" | "")}
-              >
-                <option value="">Todas</option>
-                <option value="active">Ativo</option>
-                <option value="inactive">Inativo</option>
-              </select>
+                onChange={(value) => setStatusFilter(value as "active" | "inactive" | "")}
+                placeholder="Todas"
+                options={[
+                  { value: "", label: "Todas" },
+                  { value: "active", label: "Ativo" },
+                  { value: "inactive", label: "Inativo" },
+                ]}
+              />
             </label>
           </FilterBar>
           <ListingResults fetching={list.loading} filtering={listing.busy} fetchLabel="Atualizando tipos…">
@@ -205,53 +221,45 @@ export default function MovementTypes() {
                   <th className="cell-actions">Ações</th>
                 </tr>
               </thead>
-              <tbody>
-                {listing.pageRows.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="muted">
-                      Nenhum tipo com esses filtros.
+              <AnimatedTableBody emptyColSpan={6} emptyMessage="Nenhum tipo com esses filtros.">
+                {listing.pageRows.map((type, index) => (
+                  <AnimatedRow key={type.id} index={index} flash={flashId === type.id}>
+                    <td>
+                      <strong>{type.name}</strong>
+                      <div className="muted">{type.description || "—"}</div>
+                      <RecordStamp
+                        origin={type.origin}
+                        createdAt={type.createdAt}
+                        createdBy={type.createdByUser}
+                        updatedAt={type.updatedAt}
+                        updatedBy={type.updatedByUser}
+                      />
                     </td>
-                  </tr>
-                ) : (
-                  listing.pageRows.map((type) => (
-                    <tr key={type.id}>
-                      <td>
-                        <strong>{type.name}</strong>
-                        <div className="muted">{type.description || "—"}</div>
-                        <RecordStamp
-                          origin={type.origin}
-                          createdAt={type.createdAt}
-                          createdBy={type.createdByUser}
-                          updatedAt={type.updatedAt}
-                          updatedBy={type.updatedByUser}
-                        />
-                      </td>
-                      <td>{BRANCH_LABELS[type.branch ?? "grupo"]}</td>
-                      <td>{type.pixKey || "—"}</td>
-                      <td>
-                        <Badge kind={type.direction === "expense" ? "expense" : "income"}>
-                          {directionLabel(type.direction)}
-                        </Badge>
-                      </td>
-                      <td>
-                        <Badge kind={type.active ? "paid" : "inactive"}>{type.active ? "Ativo" : "Inativo"}</Badge>
-                      </td>
-                      <td className="cell-actions">
-                        <IconButton label="Alterar tipo" onClick={() => openEdit(type)}>
-                          <FaPen />
-                        </IconButton>
-                        <IconButton
-                          label={type.active ? "Desativar tipo" : "Reativar tipo"}
-                          tone={type.active ? "danger" : "success"}
-                          onClick={() => void toggle(type)}
-                        >
-                          {type.active ? <FaBan /> : <FaCheck />}
-                        </IconButton>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
+                    <td>{BRANCH_LABELS[type.branch ?? "grupo"]}</td>
+                    <td>{type.pixKey || "—"}</td>
+                    <td>
+                      <Badge kind={type.direction === "expense" ? "expense" : "income"}>
+                        {directionLabel(type.direction)}
+                      </Badge>
+                    </td>
+                    <td>
+                      <Badge kind={type.active ? "paid" : "inactive"}>{type.active ? "Ativo" : "Inativo"}</Badge>
+                    </td>
+                    <td className="cell-actions">
+                      <IconButton label="Alterar tipo" onClick={() => openEdit(type)}>
+                        <FaPen />
+                      </IconButton>
+                      <IconButton
+                        label={type.active ? "Desativar tipo" : "Reativar tipo"}
+                        tone={type.active ? "danger" : "success"}
+                        onClick={() => void toggle(type)}
+                      >
+                        {type.active ? <FaBan /> : <FaCheck />}
+                      </IconButton>
+                    </td>
+                  </AnimatedRow>
+                ))}
+              </AnimatedTableBody>
             </table>
             <Pager
               total={listing.total}
@@ -283,29 +291,30 @@ export default function MovementTypes() {
               </label>
               <label className="field">
                 <span>Direção</span>
-                <select
+                <SearchableSelect
                   required
                   value={form.direction}
-                  onChange={(e) => setForm({ ...form, direction: e.target.value as MovementDirection })}
-                >
-                  <option value="income">Somente entrada</option>
-                  <option value="expense">Somente saída</option>
-                  <option value="both">Entrada e saída</option>
-                </select>
+                  placeholder="Selecione"
+                  onChange={(value) => setForm({ ...form, direction: value as MovementDirection })}
+                  options={[
+                    { value: "income", label: "Somente entrada" },
+                    { value: "expense", label: "Somente saída" },
+                    { value: "both", label: "Entrada e saída" },
+                  ]}
+                />
               </label>
               <label className="field">
                 <span>Ramo</span>
-                <select
+                <SearchableSelect
                   required
                   value={form.branch}
-                  onChange={(e) => setForm({ ...form, branch: e.target.value as BranchId })}
-                >
-                  {ALL_BRANCHES.map((id) => (
-                    <option key={id} value={id}>
-                      {id === "grupo" ? "Grupo (todos os ramos)" : BRANCH_LABELS[id]}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="Selecione"
+                  onChange={(value) => setForm({ ...form, branch: value as BranchId })}
+                  options={ALL_BRANCHES.map((id) => ({
+                    value: id,
+                    label: id === "grupo" ? "Grupo (todos os ramos)" : BRANCH_LABELS[id],
+                  }))}
+                />
               </label>
               <label className="field">
                 <span>Chave Pix</span>

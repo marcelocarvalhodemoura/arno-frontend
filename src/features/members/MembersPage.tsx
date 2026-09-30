@@ -3,12 +3,14 @@ import {
   BRANCH_LABELS,
   GUARDIAN_RELATIONSHIPS,
   SPECIAL_FAMILY_FEE,
+  SPECIAL_FAMILY_FEE_MEMBER,
   YOUTH_BRANCHES,
   lateMonthlyFee,
   onTimeMonthlyFee,
   paysMensalidade,
   resolveFeeOverride,
   resolveMensalidadeDueDay,
+  specialFamilyFee,
   type AccountHolderKind,
   type Member,
   type MemberAccount,
@@ -20,6 +22,7 @@ import {
 import RecordStamp from "@/shared/ui/RecordStamp";
 import PageHeader from "@/shared/ui/PageHeader";
 import Modal from "@/shared/ui/Modal";
+import { PageGuide, membersGuide } from "@/features/help";
 import { Badge } from "@/shared/ui/StatCard";
 import PageLoader from "@/shared/ui/PageLoader";
 import FetchOverlay from "@/shared/ui/FetchOverlay";
@@ -28,6 +31,7 @@ import SubmitButton from "@/shared/ui/SubmitButton";
 import FilterBar from "@/shared/ui/FilterBar";
 import Pager from "@/shared/ui/Pager";
 import IconButton from "@/shared/ui/IconButton";
+import SearchableSelect from "@/shared/ui/SearchableSelect";
 import { AnimatePresence } from "framer-motion";
 import { FaPen, FaTrashAlt, FaUserCheck, FaUserSlash, FaWallet } from "react-icons/fa";
 import { api } from "@/core/http";
@@ -37,6 +41,8 @@ import { matchesQuery, usePagedList } from "@/shared/lib/listing";
 import { formatMoney, maskPhone } from "@/shared/lib/masks";
 import { formClass, submitAttempt } from "@/shared/lib/form";
 import { useFetch } from "@/shared/hooks/use-fetch";
+import { useFlashId } from "@/shared/hooks/use-flash-id";
+import { AnimatedRow, AnimatedTableBody } from "@/shared/ui/AnimatedTable";
 
 type AuditUser = { id: string; name: string; username: string } | null;
 type MemberView = Member & {
@@ -57,16 +63,11 @@ type GuardianDraft = {
 
 type DiscountKind = "none" | "chief_child" | "siblings";
 
-function familyFeeOverride(kind: DiscountKind): number | null {
-  return kind === "none" ? null : SPECIAL_FAMILY_FEE;
+function familyFeeOverride(kind: DiscountKind, clubeLtc = false): number | null {
+  return kind === "none" ? null : specialFamilyFee(clubeLtc);
 }
 
-function tableAmounts(
-  branch: YouthBranchId,
-  clubeLtc: boolean,
-  role: MemberRole,
-  feeOverride?: number | null,
-) {
+function tableAmounts(branch: YouthBranchId, clubeLtc: boolean, role: MemberRole, feeOverride?: number | null) {
   const profile = { branch, clubeLtc, role, feeOverride };
   return { onTime: onTimeMonthlyFee(profile), late: lateMonthlyFee(profile) };
 }
@@ -90,7 +91,7 @@ function withTableFee<
     discountKind: DiscountKind;
   },
 >(form: T): T {
-  const override = familyFeeOverride(form.discountKind);
+  const override = familyFeeOverride(form.discountKind, form.clubeLtc);
   return {
     ...form,
     monthlyFee: feeLabel({ ...form, feeOverride: override }),
@@ -130,6 +131,7 @@ export default function Members() {
   const toast = useToast();
   const list = useFetch<MemberView[]>("/members");
   const settings = useFetch<Settings>("/settings");
+  const [flashId, flash] = useFlashId();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<MemberView | null>(null);
   const [form, setForm] = useState(emptyMember);
@@ -154,11 +156,7 @@ export default function Members() {
   const dueDay = resolveMensalidadeDueDay(settings.data?.mensalidadeDueDay);
   const siblingCandidates = useMemo(() => {
     const eligible = members.filter(
-      (item) =>
-        item.id !== editing?.id &&
-        paysMensalidade(item) &&
-        item.status === "active" &&
-        !item.chiefChild,
+      (item) => item.id !== editing?.id && paysMensalidade(item) && item.status === "active" && !item.chiefChild,
     );
     const selected = eligible.filter((item) => form.siblingIds.includes(item.id));
     const selectedIds = new Set(selected.map((item) => item.id));
@@ -284,7 +282,7 @@ export default function Members() {
       setError("Selecione ao menos um irmão associado");
       return;
     }
-    const feeOverride = familyFeeOverride(form.discountKind);
+    const feeOverride = familyFeeOverride(form.discountKind, form.clubeLtc);
     const payload: Record<string, unknown> = {
       name: form.name,
       email: form.email,
@@ -322,12 +320,14 @@ export default function Members() {
           method: "PATCH",
           body: JSON.stringify(payload),
         });
+        flash(editing.id);
         toast.success("Associado alterado com sucesso.");
       } else {
-        await api("/members", {
+        const created = await api<{ id: string }>("/members", {
           method: "POST",
           body: JSON.stringify(payload),
         });
+        flash(created.id);
         toast.success("Associado cadastrado com sucesso.");
       }
       closeForm();
@@ -346,6 +346,7 @@ export default function Members() {
       body: JSON.stringify({ status: nextStatus }),
     });
     await list.reload();
+    flash(member.id);
     toast.success(
       nextStatus === "inactive"
         ? "Associado inativado. Mensalidades dos meses seguintes foram canceladas."
@@ -426,9 +427,12 @@ export default function Members() {
         title="Cadastro e responsáveis"
         subtitle="Jovens entram com pai, mãe, tio, avós ou outro responsável. Associados e lançamentos já cadastrados também podem receber ou alterar esses dados."
         actions={
-          <button className="btn btn-primary" type="button" onClick={openCreate}>
-            Novo associado
-          </button>
+          <div className="page-head__actions">
+            <PageGuide guide={membersGuide} />
+            <button className="btn btn-primary" type="button" onClick={openCreate}>
+              Novo associado
+            </button>
+          </div>
         }
       />
 
@@ -445,43 +449,56 @@ export default function Members() {
             </label>
             <label className="field">
               <span>Ramo</span>
-              <select value={branch} onChange={(e) => setBranch(e.target.value as YouthBranchId | "")}>
-                <option value="">Todos</option>
-                {YOUTH_BRANCHES.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
+              <SearchableSelect
+                value={branch}
+                onChange={(value) => setBranch(value as YouthBranchId | "")}
+                placeholder="Todos"
+                options={[
+                  { value: "", label: "Todos" },
+                  ...YOUTH_BRANCHES.map((b) => ({ value: b.id, label: b.name })),
+                ]}
+              />
             </label>
             <label className="field">
               <span>Papel</span>
-              <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value as MemberRole | "")}>
-                <option value="">Todos</option>
-                <option value="jovem">Jovem</option>
-                <option value="escotista">Escotista</option>
-                <option value="dirigente">Dirigente</option>
-                <option value="clube">Clube da Flor de Lis</option>
-              </select>
+              <SearchableSelect
+                value={roleFilter}
+                onChange={(value) => setRoleFilter(value as MemberRole | "")}
+                placeholder="Todos"
+                options={[
+                  { value: "", label: "Todos" },
+                  { value: "jovem", label: "Jovem" },
+                  { value: "escotista", label: "Escotista" },
+                  { value: "dirigente", label: "Dirigente" },
+                  { value: "clube", label: "Clube da Flor de Lis" },
+                ]}
+              />
             </label>
             <label className="field">
               <span>Situação</span>
-              <select
+              <SearchableSelect
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as "active" | "inactive" | "")}
-              >
-                <option value="">Todas</option>
-                <option value="active">Ativo</option>
-                <option value="inactive">Inativo</option>
-              </select>
+                onChange={(value) => setStatusFilter(value as "active" | "inactive" | "")}
+                placeholder="Todas"
+                options={[
+                  { value: "", label: "Todas" },
+                  { value: "active", label: "Ativo" },
+                  { value: "inactive", label: "Inativo" },
+                ]}
+              />
             </label>
             <label className="field">
               <span>Clube LTC</span>
-              <select value={ltcFilter} onChange={(e) => setLtcFilter(e.target.value as "yes" | "no" | "")}>
-                <option value="">Todos</option>
-                <option value="yes">Sim</option>
-                <option value="no">Não</option>
-              </select>
+              <SearchableSelect
+                value={ltcFilter}
+                onChange={(value) => setLtcFilter(value as "yes" | "no" | "")}
+                placeholder="Todos"
+                options={[
+                  { value: "", label: "Todos" },
+                  { value: "yes", label: "Sim" },
+                  { value: "no", label: "Não" },
+                ]}
+              />
             </label>
           </FilterBar>
           <ListingResults fetching={list.loading} filtering={listing.busy} fetchLabel="Atualizando associados…">
@@ -501,109 +518,101 @@ export default function Members() {
                     <th className="cell-actions">Ações</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {listing.pageRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={10} className="muted">
-                        Nenhum associado com esses filtros.
+                <AnimatedTableBody emptyColSpan={10} emptyMessage="Nenhum associado com esses filtros.">
+                  {listing.pageRows.map((m, index) => (
+                    <AnimatedRow key={m.id} index={index} flash={flashId === m.id}>
+                      <td>
+                        <strong>{m.name}</strong>
+                        <div className="muted">{m.email}</div>
+                        <RecordStamp
+                          origin={m.origin}
+                          createdAt={m.createdAt}
+                          createdBy={m.createdByUser}
+                          updatedAt={m.updatedAt}
+                          updatedBy={m.updatedByUser}
+                        />
                       </td>
-                    </tr>
-                  ) : (
-                    listing.pageRows.map((m) => (
-                      <tr key={m.id}>
-                        <td>
-                          <strong>{m.name}</strong>
-                          <div className="muted">{m.email}</div>
-                          <RecordStamp
-                            origin={m.origin}
-                            createdAt={m.createdAt}
-                            createdBy={m.createdByUser}
-                            updatedAt={m.updatedAt}
-                            updatedBy={m.updatedByUser}
-                          />
-                        </td>
-                        <td>
-                          <span
-                            className="branch-dot"
-                            style={{ background: YOUTH_BRANCHES.find((b) => b.id === m.branch)?.color }}
-                          />{" "}
-                          {BRANCH_LABELS[m.branch]}
-                        </td>
-                        <td>{roleLabel(m.role)}</td>
-                        <td>
-                          {m.role === "jovem"
-                            ? (m.guardians ?? []).length
-                              ? (m.guardians ?? [])
-                                  .map((guardian) => `${guardian.name} (${guardian.relationship})`)
-                                  .join(", ")
-                              : "Sem responsável"
-                            : "—"}
-                        </td>
-                        <td>{formatDate(m.joinedAt)}</td>
-                        <td>
-                          {m.accounts.length
-                            ? m.accounts
-                                .filter((a) => a.active)
-                                .map((a) => a.holderName)
+                      <td>
+                        <span
+                          className="branch-dot"
+                          style={{ background: YOUTH_BRANCHES.find((b) => b.id === m.branch)?.color }}
+                        />{" "}
+                        {BRANCH_LABELS[m.branch]}
+                      </td>
+                      <td>{roleLabel(m.role)}</td>
+                      <td>
+                        {m.role === "jovem"
+                          ? (m.guardians ?? []).length
+                            ? (m.guardians ?? [])
+                                .map((guardian) => `${guardian.name} (${guardian.relationship})`)
                                 .join(", ")
-                            : "—"}
-                        </td>
-                        <td className="num">
-                          {paysMensalidade(m) && m.monthlyFee ? brl(m.monthlyFee) : "Não paga"}
-                          {paysMensalidade(m) && resolveFeeOverride(m) != null ? (
-                            <div className="muted">
-                              {m.chiefChild
-                                ? "filho de chefe"
-                                : (m.siblingIds ?? []).length
-                                  ? "irmão no grupo"
-                                  : "valor especial"}
-                            </div>
-                          ) : null}
-                          {paysMensalidade(m) &&
-                          resolveFeeOverride(m) == null &&
-                          !m.clubeLtc &&
-                          lateMonthlyFee(m) !== m.monthlyFee ? (
-                            <div className="muted">
-                              após dia {dueDay}: {brl(lateMonthlyFee(m))}
-                            </div>
-                          ) : null}
-                        </td>
-                        <td>
-                          <Badge kind={m.clubeLtc ? "paid" : "inactive"}>{yesNo(m.clubeLtc)}</Badge>
-                        </td>
-                        <td>
-                          <Badge kind={m.status === "active" ? "paid" : "inactive"}>
-                            {m.status === "active" ? "Ativo" : "Inativo"}
-                          </Badge>
-                        </td>
-                        <td className="cell-actions">
-                          <IconButton label="Alterar associado" onClick={() => openEdit(m)}>
-                            <FaPen />
-                          </IconButton>
-                          <IconButton
-                            label="Contas de pagamento"
-                            onClick={() => {
-                              setAccountQuery("");
-                              setAttemptedAccount(false);
-                              setEditingAccount(null);
-                              setAccountForm(emptyAccount);
-                              setAccountsOf(m);
-                            }}
-                          >
-                            <FaWallet />
-                          </IconButton>
-                          <IconButton
-                            label={m.status === "active" ? "Desativar associado" : "Reativar associado"}
-                            tone={m.status === "active" ? "danger" : "success"}
-                            onClick={() => void toggle(m)}
-                          >
-                            {m.status === "active" ? <FaUserSlash /> : <FaUserCheck />}
-                          </IconButton>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
+                            : "Sem responsável"
+                          : "—"}
+                      </td>
+                      <td>{formatDate(m.joinedAt)}</td>
+                      <td>
+                        {m.accounts.length
+                          ? m.accounts
+                              .filter((a) => a.active)
+                              .map((a) => a.holderName)
+                              .join(", ")
+                          : "—"}
+                      </td>
+                      <td className="num">
+                        {paysMensalidade(m) && m.monthlyFee ? brl(m.monthlyFee) : "Não paga"}
+                        {paysMensalidade(m) && resolveFeeOverride(m) != null ? (
+                          <div className="muted">
+                            {m.chiefChild
+                              ? "filho de chefe"
+                              : (m.siblingIds ?? []).length
+                                ? "irmão no grupo"
+                                : "valor especial"}
+                          </div>
+                        ) : null}
+                        {paysMensalidade(m) &&
+                        resolveFeeOverride(m) == null &&
+                        !m.clubeLtc &&
+                        lateMonthlyFee(m) !== m.monthlyFee ? (
+                          <div className="muted">
+                            após dia {dueDay}: {brl(lateMonthlyFee(m))}
+                          </div>
+                        ) : null}
+                      </td>
+                      <td>
+                        <Badge kind={m.clubeLtc ? "paid" : "inactive"}>{yesNo(m.clubeLtc)}</Badge>
+                      </td>
+                      <td>
+                        <Badge kind={m.status === "active" ? "paid" : "inactive"}>
+                          {m.status === "active" ? "Ativo" : "Inativo"}
+                        </Badge>
+                      </td>
+                      <td className="cell-actions">
+                        <IconButton label="Alterar associado" onClick={() => openEdit(m)}>
+                          <FaPen />
+                        </IconButton>
+                        <IconButton
+                          label="Contas de pagamento"
+                          onClick={() => {
+                            setAccountQuery("");
+                            setAttemptedAccount(false);
+                            setEditingAccount(null);
+                            setAccountForm(emptyAccount);
+                            setAccountsOf(m);
+                          }}
+                        >
+                          <FaWallet />
+                        </IconButton>
+                        <IconButton
+                          label={m.status === "active" ? "Desativar associado" : "Reativar associado"}
+                          tone={m.status === "active" ? "danger" : "success"}
+                          onClick={() => void toggle(m)}
+                        >
+                          {m.status === "active" ? <FaUserSlash /> : <FaUserCheck />}
+                        </IconButton>
+                      </td>
+                    </AnimatedRow>
+                  ))}
+                </AnimatedTableBody>
               </table>
             </div>
             <Pager
@@ -655,28 +664,30 @@ export default function Members() {
               </label>
               <label className="field">
                 <span>Ramo</span>
-                <select
+                <SearchableSelect
                   required
                   value={form.branch}
-                  onChange={(e) =>
-                    setForm((current) => withTableFee({ ...current, branch: e.target.value as YouthBranchId }))
+                  placeholder="Selecione"
+                  onChange={(value) =>
+                    setForm((current) => withTableFee({ ...current, branch: value as YouthBranchId }))
                   }
-                >
-                  {YOUTH_BRANCHES.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.name}
-                    </option>
-                  ))}
-                </select>
+                  options={YOUTH_BRANCHES.map((b) => ({ value: b.id, label: b.name }))}
+                />
               </label>
               <label className="field">
                 <span>Papel</span>
-                <select required value={form.role} onChange={(e) => changeRole(e.target.value as MemberRole)}>
-                  <option value="jovem">Jovem</option>
-                  <option value="escotista">Escotista</option>
-                  <option value="dirigente">Dirigente</option>
-                  <option value="clube">Clube da Flor de Lis</option>
-                </select>
+                <SearchableSelect
+                  required
+                  value={form.role}
+                  placeholder="Selecione"
+                  onChange={(value) => changeRole(value as MemberRole)}
+                  options={[
+                    { value: "jovem", label: "Jovem" },
+                    { value: "escotista", label: "Escotista" },
+                    { value: "dirigente", label: "Dirigente" },
+                    { value: "clube", label: "Clube da Flor de Lis" },
+                  ]}
+                />
               </label>
               <label className="field">
                 <span>Mensalidade (tabela do grupo)</span>
@@ -687,9 +698,11 @@ export default function Members() {
                       return "Dirigentes, escotistas e o Clube da Flor de Lis não pagam mensalidade.";
                     }
                     if (form.discountKind !== "none") {
-                      const reason =
-                        form.discountKind === "chief_child" ? "filho de chefe" : "irmão(s) no grupo";
-                      return `Valor especial (${reason}): ${brl(SPECIAL_FAMILY_FEE)} a partir de maio. Março/abril seguem a tabela antiga (R$ 60 / R$ 15).`;
+                      const reason = form.discountKind === "chief_child" ? "filho de chefe" : "irmão(s) no grupo";
+                      const special = specialFamilyFee(form.clubeLtc);
+                      return form.clubeLtc
+                        ? `Valor especial (${reason}, sócio Lindóia): ${brl(special)} a partir de maio. Março/abril seguem a tabela antiga (R$ 60 / R$ 15).`
+                        : `Valor especial (${reason}): ${brl(special)} a partir de maio (não sócio). Sócio Lindóia: ${brl(SPECIAL_FAMILY_FEE_MEMBER)}. Março/abril: tabela antiga (R$ 60 / R$ 15).`;
                     }
                     const amounts = tableAmounts(form.branch, form.clubeLtc, form.role);
                     if (form.clubeLtc) {
@@ -703,11 +716,12 @@ export default function Members() {
               </label>
               <label className="field">
                 <span>Desconto familiar</span>
-                <select
+                <SearchableSelect
                   value={form.discountKind}
                   disabled={!paysMensalidade(form)}
-                  onChange={(e) => {
-                    const discountKind = e.target.value as DiscountKind;
+                  placeholder="Tabela oficial"
+                  onChange={(value) => {
+                    const discountKind = value as DiscountKind;
                     setSiblingQuery("");
                     setForm((current) =>
                       withTableFee({
@@ -717,11 +731,18 @@ export default function Members() {
                       }),
                     );
                   }}
-                >
-                  <option value="none">Tabela oficial</option>
-                  <option value="chief_child">Filho de chefe (R$ 82)</option>
-                  <option value="siblings">Irmão(s) no grupo (R$ 82)</option>
-                </select>
+                  options={[
+                    { value: "none", label: "Tabela oficial" },
+                    {
+                      value: "chief_child",
+                      label: `Filho de chefe (${brl(SPECIAL_FAMILY_FEE)} / ${brl(SPECIAL_FAMILY_FEE_MEMBER)} sócio)`,
+                    },
+                    {
+                      value: "siblings",
+                      label: `Irmão(s) no grupo (${brl(SPECIAL_FAMILY_FEE)} / ${brl(SPECIAL_FAMILY_FEE_MEMBER)} sócio)`,
+                    },
+                  ]}
+                />
                 <small className="muted">Só uma opção: filho de chefe ou irmãos — não as duas.</small>
               </label>
               {form.discountKind === "siblings" && paysMensalidade(form) ? (
@@ -790,7 +811,8 @@ export default function Members() {
                     )}
                   </div>
                   <small className="muted">
-                    Busque e marque o irmão (ou irmãos). O vínculo é bidirecional e aplica R$ 82 nos dois.
+                    Busque e marque o irmão (ou irmãos). O vínculo é bidirecional e aplica o valor especial nos dois (
+                    {brl(SPECIAL_FAMILY_FEE)} / {brl(SPECIAL_FAMILY_FEE_MEMBER)} sócio).
                   </small>
                 </div>
               ) : null}
@@ -805,16 +827,16 @@ export default function Members() {
               </label>
               <label className="field">
                 <span>Associado do Clube LTC</span>
-                <select
+                <SearchableSelect
                   required
                   value={form.clubeLtc ? "true" : "false"}
-                  onChange={(e) =>
-                    setForm((current) => withTableFee({ ...current, clubeLtc: e.target.value === "true" }))
-                  }
-                >
-                  <option value="false">Não</option>
-                  <option value="true">Sim</option>
-                </select>
+                  placeholder="Selecione"
+                  onChange={(value) => setForm((current) => withTableFee({ ...current, clubeLtc: value === "true" }))}
+                  options={[
+                    { value: "false", label: "Não" },
+                    { value: "true", label: "Sim" },
+                  ]}
+                />
               </label>
               {form.role === "jovem" ? (
                 <div className="wide guardian-block">
@@ -851,7 +873,7 @@ export default function Members() {
                       </label>
                       <label className="field">
                         <span>Parentesco</span>
-                        <select
+                        <SearchableSelect
                           required
                           value={
                             GUARDIAN_RELATIONSHIPS.includes(
@@ -860,14 +882,10 @@ export default function Members() {
                               ? guardian.relationship
                               : "Outro"
                           }
-                          onChange={(e) => patchGuardian(index, { relationship: e.target.value })}
-                        >
-                          {GUARDIAN_RELATIONSHIPS.map((item) => (
-                            <option key={item} value={item}>
-                              {item}
-                            </option>
-                          ))}
-                        </select>
+                          placeholder="Selecione"
+                          onChange={(value) => patchGuardian(index, { relationship: value })}
+                          options={GUARDIAN_RELATIONSHIPS.map((item) => ({ value: item, label: item }))}
+                        />
                       </label>
                       <label className="field">
                         <span>Telefone</span>
@@ -1037,15 +1055,17 @@ export default function Members() {
               </label>
               <label className="field">
                 <span>Quem paga</span>
-                <select
+                <SearchableSelect
                   required
                   value={accountForm.holderKind}
-                  onChange={(e) => setAccountForm({ ...accountForm, holderKind: e.target.value as AccountHolderKind })}
-                >
-                  <option value="parent">Pai / mãe</option>
-                  <option value="youth">Jovem</option>
-                  <option value="other">Outro</option>
-                </select>
+                  placeholder="Selecione"
+                  onChange={(value) => setAccountForm({ ...accountForm, holderKind: value as AccountHolderKind })}
+                  options={[
+                    { value: "parent", label: "Pai / mãe" },
+                    { value: "youth", label: "Jovem" },
+                    { value: "other", label: "Outro" },
+                  ]}
+                />
               </label>
               <label className="field">
                 <span>Parentesco / relação</span>

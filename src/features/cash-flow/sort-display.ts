@@ -1,6 +1,13 @@
 import type { CashFlowDisplayRow } from "@/features/cash-flow/split-display";
 import { BRANCH_LABELS, type BranchId, type MovementType, type Transaction, type TxNature } from "@/domain";
-import { dueDateOf, natureLabel, paidDateOf, settlementOf, type TxSettlement } from "@/shared/lib/format";
+import {
+  dueDateOf,
+  natureLabel,
+  paidDateOf,
+  settlementOf,
+  groupSettlementOf,
+  type TxSettlement,
+} from "@/shared/lib/format";
 import { compareNumber, compareText, type SortDir } from "@/shared/ui/SortableTh";
 
 export type CashFlowSortKey =
@@ -37,12 +44,14 @@ function rowMeta(row: CashFlowDisplayRow, txById: Map<string, TxLike>) {
   const parts = row.partIds.map((id) => txById.get(id)).filter((item): item is TxLike => Boolean(item));
   const head = parts[0];
   if (!head) return null;
-  const settlement = settlementOf(head.paymentStatus, head.date);
+  const settlement = groupSettlementOf(parts);
+  const allPaid = parts.every((part) => settlementOf(part.paymentStatus, part.date) === "paid");
+  const paidDates = parts.map((part) => paidDateOf(part)).filter(Boolean);
   const mixedTypes = new Set(parts.map((p) => p.movementType?.name).filter(Boolean));
   const branches = [...new Set(parts.map((p) => BRANCH_LABELS[p.branch as BranchId] ?? p.branch))].join(" ");
   return {
     dueDate: dueDateOf(head),
-    paidDate: paidDateOf(head),
+    paidDate: allPaid && paidDates.length && new Set(paidDates).size === 1 ? paidDates[0]! : "",
     description: row.label,
     movementType: mixedTypes.size === 1 ? ([...mixedTypes][0] as string) : `${row.partCount} partes`,
     branch: branches,

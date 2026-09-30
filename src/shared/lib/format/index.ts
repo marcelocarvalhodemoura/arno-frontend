@@ -13,5 +13,12 @@ export {
   typeLabel,
   yesNo,
 } from "./labels";
-export { dueDateOf, paidDateOf, settlementLabel, settlementOf, type TxSettlement } from "./settlement";
+export {
+  dueDateOf,
+  groupSettlementOf,
+  paidDateOf,
+  settlementLabel,
+  settlementOf,
+  type TxSettlement,
+} from "./settlement";
 export { downloadCsv, toCsv } from "./csv-download";

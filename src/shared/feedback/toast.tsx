@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { FaCheckCircle, FaExclamationCircle } from "react-icons/fa";
 import { duration, ease } from "@/shared/lib/motion";
 
@@ -23,6 +23,30 @@ const ToastContext = createContext<ToastApi>({
 
 let nextId = 1;
 
+function ToastStack({ toasts }: { toasts: ToastItem[] }) {
+  const reduce = useReducedMotion();
+  return (
+    <div className="toasts" aria-live="polite" aria-relevant="additions">
+      <AnimatePresence>
+        {toasts.map((toast) => (
+          <motion.div
+            key={toast.id}
+            className={`toast toast--${toast.kind}`}
+            role="status"
+            initial={reduce ? { opacity: 0 } : { opacity: 0, y: 12, x: 16 }}
+            animate={{ opacity: 1, y: 0, x: 0 }}
+            exit={reduce ? { opacity: 0 } : { opacity: 0, x: 24 }}
+            transition={{ duration: duration.base, ease }}
+          >
+            {toast.kind === "success" ? <FaCheckCircle /> : <FaExclamationCircle />}
+            <span>{toast.message}</span>
+          </motion.div>
+        ))}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
@@ -45,24 +69,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <div className="toasts" aria-live="polite" aria-relevant="additions">
-        <AnimatePresence>
-          {toasts.map((toast) => (
-            <motion.div
-              key={toast.id}
-              className={`toast toast--${toast.kind}`}
-              role="status"
-              initial={{ opacity: 0, y: 12, x: 16 }}
-              animate={{ opacity: 1, y: 0, x: 0 }}
-              exit={{ opacity: 0, x: 24 }}
-              transition={{ duration: duration.base, ease }}
-            >
-              {toast.kind === "success" ? <FaCheckCircle /> : <FaExclamationCircle />}
-              <span>{toast.message}</span>
-            </motion.div>
-          ))}
-        </AnimatePresence>
-      </div>
+      <ToastStack toasts={toasts} />
     </ToastContext.Provider>
   );
 }

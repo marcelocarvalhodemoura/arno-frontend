@@ -16,8 +16,8 @@ import {
   type TxType,
 } from "@/domain";
 import PageHeader from "@/shared/ui/PageHeader";
-import IdentifyPaymentsGuide from "@/shared/ui/IdentifyPaymentsGuide";
 import Modal from "@/shared/ui/Modal";
+import { PageGuide, cashFlowGuide } from "@/features/help";
 import StatCard, { Badge } from "@/shared/ui/StatCard";
 import RecordStamp from "@/shared/ui/RecordStamp";
 import PageLoader from "@/shared/ui/PageLoader";
@@ -25,23 +25,25 @@ import FetchOverlay from "@/shared/ui/FetchOverlay";
 import ListingResults from "@/shared/ui/ListingResults";
 import SubmitButton from "@/shared/ui/SubmitButton";
 import FilterBar from "@/shared/ui/FilterBar";
+import { PeriodField } from "@/shared/ui/PeriodControl";
+import SearchableSelect from "@/shared/ui/SearchableSelect";
 import Pager from "@/shared/ui/Pager";
 import IconButton from "@/shared/ui/IconButton";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
-  FaBroadcastTower,
   FaCheck,
   FaChevronDown,
   FaClock,
   FaExpand,
   FaFileAlt,
+  FaHandHoldingUsd,
+  FaLink,
   FaPaperclip,
   FaPen,
   FaTag,
   FaTrashAlt,
   FaCodeBranch,
 } from "react-icons/fa";
-import { useNavigate } from "react-router-dom";
 import { useToast } from "@/shared/feedback/toast";
 import { api } from "@/core/http";
 import NotaViewer from "@/features/cash-flow/NotaViewer";
@@ -50,12 +52,14 @@ import {
   brl,
   formatDate,
   methodLabel,
+  MONTHS,
   natureLabel,
   originLabel,
   dueDateOf,
   paidDateOf,
   settlementLabel,
   settlementOf,
+  groupSettlementOf,
   signedClass,
   todayISO,
   typeLabel,
@@ -91,6 +95,8 @@ type TxView = Transaction & {
   createdByUser: StampUser;
   updatedByUser: StampUser;
   hasNota?: boolean;
+  /** Mensalidade com parcela de acordo embutida, ou lançamento só de acordo. */
+  arrearsMarker?: "embed" | "agreement" | null;
 };
 
 type SplitPartDraft = {
@@ -123,7 +129,6 @@ function blankForm(year: number, month: number) {
 
 export default function CashFlow() {
   const toast = useToast();
-  const navigate = useNavigate();
   const { year, month, setYear, setMonth } = usePeriod();
   const { from, to } = periodRange(year, month);
   const flow = useFetch<Flow>(`/reports/cashflow?from=${from}&to=${to}`);
@@ -133,7 +138,6 @@ export default function CashFlow() {
   const members = useFetch<MemberOption[]>("/members");
   const projects = useFetch<FinancialProject[]>(`/projects?year=${year || 2026}`);
   const [open, setOpen] = useState(false);
-  const [identifying, setIdentifying] = useState<TxView | null>(null);
   const [identifyQueue, setIdentifyQueue] = useState<string[]>([]);
   const [identifyIndex, setIdentifyIndex] = useState(0);
   const pendingIdentify = useRef(readIdentifyFlag());
@@ -159,9 +163,41 @@ export default function CashFlow() {
   const [clearNota, setClearNota] = useState(false);
   const [viewingNota, setViewingNota] = useState<TxView | null>(null);
   const [uploadingNota, setUploadingNota] = useState<TxView | null>(null);
+  const [payConfirm, setPayConfirm] = useState<
+    { mode: "single"; tx: TxView } | { mode: "split"; parts: TxView[] } | null
+  >(null);
+  const [payConfirmDate, setPayConfirmDate] = useState(todayISO);
+  const [alsoSettleIds, setAlsoSettleIds] = useState<string[]>([]);
   const [sortKey, setSortKey] = useState<CashFlowSortKey>("dueDate");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const reduceMotion = useReducedMotion();
+
+  /** Outras mensalidades em aberto do mesmo associado no ano (adiantamento). */
+  const payConfirmOtherMonths = useMemo(() => {
+    if (!payConfirm || payConfirm.mode !== "single") return [];
+    const tx = payConfirm.tx;
+    if (!tx.memberId || !isMensalidadeName(tx.movementType?.name ?? "")) return [];
+    const source = yearTxs.data ?? txs.data ?? [];
+    return source
+      .filter(
+        (item) =>
+          item.id !== tx.id &&
+          item.memberId === tx.memberId &&
+          item.paymentStatus !== "paid" &&
+          isMensalidadeName(item.movementType?.name ?? ""),
+      )
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }, [payConfirm, yearTxs.data, txs.data]);
+
+  const payConfirmAdvanceTotal = useMemo(() => {
+    if (!payConfirm || payConfirm.mode !== "single") return 0;
+    let total = payConfirm.tx.amount;
+    for (const id of alsoSettleIds) {
+      const hit = payConfirmOtherMonths.find((item) => item.id === id);
+      if (hit) total += hit.amount;
+    }
+    return total;
+  }, [payConfirm, alsoSettleIds, payConfirmOtherMonths]);
 
   async function uploadNota(transactionId: string, file: File) {
     const body = new FormData();
@@ -222,6 +258,8 @@ export default function CashFlow() {
             settlementLabel(settlement),
             dueDateOf(t),
             paidDateOf(t),
+            t.arrearsMarker === "embed" ? "acordo mensalidade parcela" : "",
+            t.arrearsMarker === "agreement" ? "acordo dívida" : "",
           ])
         ) {
           continue;
@@ -300,17 +338,6 @@ export default function CashFlow() {
   const sicredi = useFetch<{ configured: boolean; mock: boolean; lastSyncAt?: string }>(
     `/integrations/sicredi?from=${from}&to=${to}`,
   );
-  const [liveSyncing, setLiveSyncing] = useState(false);
-
-  const identifyTypes = useMemo(() => {
-    if (!identifying) return [];
-    return (types.data ?? []).filter(
-      (item) =>
-        item.active &&
-        !isUnidentifiedName(item.name) &&
-        (item.direction === "both" || item.direction === identifying.type),
-    );
-  }, [types.data, identifying]);
 
   const listing = usePagedList(
     displayRows,
@@ -382,7 +409,6 @@ export default function CashFlow() {
 
   function closeForm() {
     setOpen(false);
-    setIdentifying(null);
     setIdentifyQueue([]);
     setIdentifyIndex(0);
     setEditing(null);
@@ -393,23 +419,30 @@ export default function CashFlow() {
     setAttempted(false);
   }
 
-  function showIdentify(tx: TxView) {
+  function openEdit(
+    tx: TxView,
+    options?: {
+      identifyQueue?: string[];
+      identifyIndex?: number;
+    },
+  ) {
     const stamp = tx.date.slice(0, 10);
     const nextYear = Number(stamp.slice(0, 4));
     const nextMonth = Number(stamp.slice(5, 7));
-    if (nextYear && nextMonth && (nextYear !== year || nextMonth !== month)) {
+    if (options?.identifyQueue?.length && nextYear && nextMonth && (nextYear !== year || nextMonth !== month)) {
       setYear(nextYear);
       setMonth(nextMonth);
     }
-    setOpen(false);
-    setEditing(null);
-    setIdentifying(tx);
+    setIdentifyQueue(options?.identifyQueue ?? []);
+    setIdentifyIndex(options?.identifyIndex ?? 0);
+    setEditing(tx);
+    const isFee = isMensalidadeName(tx.movementType?.name);
     setForm({
       date: stamp,
-      paidAt: tx.paidAt?.slice(0, 10) || (tx.paymentStatus === "paid" ? stamp : ""),
+      paidAt: tx.paymentStatus === "pending" ? "" : tx.paidAt?.slice(0, 10) || (isFee ? "" : stamp),
       type: tx.type,
       nature: tx.nature,
-      movementTypeId: "",
+      movementTypeId: isUnidentifiedName(tx.movementType?.name) ? "" : tx.movementTypeId,
       description: tx.description,
       amount: formatMoney(tx.amount),
       branch: tx.branch,
@@ -420,8 +453,11 @@ export default function CashFlow() {
       memberGuardianId: tx.memberGuardianId ?? "",
       projectId: tx.projectId ?? "",
     });
+    setNotaFile(null);
+    setClearNota(false);
     setError(null);
     setAttempted(false);
+    setOpen(true);
   }
 
   function startIdentifyQueue(list: TxView[], fromId?: string) {
@@ -433,9 +469,8 @@ export default function CashFlow() {
         )
       : 0;
     const queue = list.slice(start);
-    setIdentifyQueue(queue.map((item) => item.id));
-    setIdentifyIndex(0);
-    showIdentify(queue[0]!);
+    const ids = queue.map((item) => item.id);
+    openEdit(queue[0]!, { identifyQueue: ids, identifyIndex: 0 });
   }
 
   function skipIdentify() {
@@ -447,13 +482,12 @@ export default function CashFlow() {
       toast.success("Não há mais lançamentos para identificar neste lote.");
       return;
     }
-    setIdentifyIndex(nextIndex);
-    showIdentify(next);
+    openEdit(next, { identifyQueue, identifyIndex: nextIndex });
   }
 
   function openCreate() {
-    setIdentifying(null);
     setIdentifyQueue([]);
+    setIdentifyIndex(0);
     setEditing(null);
     setForm(blankForm(year, month));
     setNotaFile(null);
@@ -463,33 +497,26 @@ export default function CashFlow() {
     setOpen(true);
   }
 
-  function openEdit(tx: TxView) {
-    setIdentifying(null);
-    setIdentifyQueue([]);
-    setEditing(tx);
-    setForm({
-      date: tx.date.slice(0, 10),
-      paidAt:
-        tx.paidAt?.slice(0, 10) ||
-        (tx.paymentStatus === "paid" && !isMensalidadeName(tx.movementType?.name) ? tx.date.slice(0, 10) : ""),
-      type: tx.type,
-      nature: tx.nature,
-      movementTypeId: tx.movementTypeId,
-      description: tx.description,
-      amount: formatMoney(tx.amount),
-      branch: tx.branch,
-      method: tx.method,
-      paymentStatus: tx.paymentStatus ?? "paid",
-      memberId: tx.memberId ?? "",
-      memberAccountId: tx.memberAccountId ?? "",
-      memberGuardianId: tx.memberGuardianId ?? "",
-      projectId: tx.projectId ?? "",
-    });
-    setNotaFile(null);
-    setClearNota(false);
-    setError(null);
-    setAttempted(false);
-    setOpen(true);
+  async function advanceIdentifyQueueAfterSave() {
+    if (!identifyQueue.length) return false;
+    const nextIndex = identifyIndex + 1;
+    const nextId = identifyQueue[nextIndex];
+    const next =
+      unidentified.find((item) => item.id === nextId) ??
+      (txs.data ?? []).find((item) => item.id === nextId) ??
+      (yearTxs.data ?? []).find((item) => item.id === nextId);
+    await Promise.all([flow.reload(), txs.reload(), yearTxs.reload()]);
+    if (!nextId || !next) {
+      toast.success(
+        nextIndex >= identifyQueue.length
+          ? "Todos os lançamentos deste lote foram salvos."
+          : "Lançamento salvo. Fim do lote.",
+      );
+      return false;
+    }
+    openEdit(next, { identifyQueue, identifyIndex: nextIndex });
+    toast.success("Lançamento salvo. Confira o próximo.");
+    return true;
   }
 
   async function onSave(e: FormEvent<HTMLFormElement>) {
@@ -498,7 +525,7 @@ export default function CashFlow() {
     const amount = parseMoney(form.amount);
     if (!Number.isFinite(amount) || amount <= 0) return;
     const dueDate = form.date;
-    const paymentDate = form.paidAt;
+    const paymentDate = form.paidAt.trim();
     if (!dueDate) return;
     if (form.paymentStatus === "paid" && !paymentDate) {
       setError(feeLaunch ? "Informe a data de pagamento da mensalidade" : "Informe a data de pagamento");
@@ -506,9 +533,15 @@ export default function CashFlow() {
     }
     setSaving(true);
     const payload = {
-      ...form,
       date: dueDate,
-      paidAt: form.paymentStatus === "paid" ? paymentDate || dueDate : null,
+      type: form.type,
+      nature: form.nature,
+      movementTypeId: form.movementTypeId,
+      description: form.description,
+      branch: form.branch,
+      method: form.method,
+      paymentStatus: form.paymentStatus,
+      paidAt: form.paymentStatus === "paid" ? paymentDate : null,
       amount,
       memberId: form.memberId || null,
       memberAccountId: form.memberAccountId || null,
@@ -517,6 +550,12 @@ export default function CashFlow() {
     };
     try {
       if (editing) {
+        const selectedType = (types.data ?? []).find((item) => item.id === form.movementTypeId);
+        if (identifyQueue.length && (!selectedType || isUnidentifiedName(selectedType.name))) {
+          setError("Escolha o tipo de movimentação antes de salvar");
+          setSaving(false);
+          return;
+        }
         await api(`/transactions/${editing.id}`, {
           method: "PATCH",
           body: JSON.stringify(payload),
@@ -527,7 +566,10 @@ export default function CashFlow() {
         if (notaFile) {
           await uploadNota(editing.id, notaFile);
         }
-        toast.success("Lançamento alterado com sucesso.");
+        if (await advanceIdentifyQueueAfterSave()) {
+          return;
+        }
+        toast.success(identifyQueue.length ? "Lançamento identificado." : "Lançamento alterado com sucesso.");
       } else {
         const created = await api<{ id: string }>("/transactions", {
           method: "POST",
@@ -548,45 +590,6 @@ export default function CashFlow() {
       void Promise.all([flow.reload(), txs.reload(), yearTxs.reload()]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Não foi possível salvar o lançamento");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function onIdentify(e: FormEvent<HTMLFormElement>) {
-    if (!submitAttempt(e, setAttempted)) return;
-    if (!identifying) return;
-    const movement = (types.data ?? []).find((item) => item.id === form.movementTypeId);
-    if (!movement || isUnidentifiedName(movement.name)) {
-      setError("Escolha o tipo de movimentação");
-      return;
-    }
-    setSaving(true);
-    setError(null);
-    try {
-      await api(`/transactions/${identifying.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          movementTypeId: movement.id,
-          nature: natureForTypeName(movement.name),
-          branch: form.branch,
-          memberId: form.memberId || null,
-          memberGuardianId: form.memberGuardianId || null,
-        }),
-      });
-      const nextId = identifyQueue[identifyIndex + 1];
-      const next = unidentified.find((item) => item.id === nextId);
-      if (next) {
-        setIdentifyIndex((index) => index + 1);
-        showIdentify(next);
-        toast.success("Tipo definido. Confira o próximo lançamento.");
-      } else {
-        closeForm();
-        toast.success("Lançamento identificado.");
-      }
-      void Promise.all([flow.reload(), txs.reload(), yearTxs.reload()]);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Não foi possível identificar o lançamento");
     } finally {
       setSaving(false);
     }
@@ -714,14 +717,26 @@ export default function CashFlow() {
     await Promise.all([flow.reload(), txs.reload(), yearTxs.reload()]);
   }
 
-  async function setSplitGroupPaymentStatus(parts: TxView[], paymentStatus: TxPaymentStatus) {
+  function askMarkAsPaid(target: { mode: "single"; tx: TxView } | { mode: "split"; parts: TxView[] }) {
+    setPayConfirmDate(todayISO());
+    setAlsoSettleIds([]);
+    setPayConfirm(target);
+  }
+
+  function closePayConfirm() {
+    setPayConfirm(null);
+    setAlsoSettleIds([]);
+  }
+
+  async function setSplitGroupPaymentStatus(parts: TxView[], paymentStatus: TxPaymentStatus, paidAt?: string) {
+    const paymentDate = (paidAt?.trim() || todayISO()).slice(0, 10);
     await Promise.all(
       parts.map((part) =>
         api(`/transactions/${part.id}`, {
           method: "PATCH",
           body: JSON.stringify({
             paymentStatus,
-            paidAt: paymentStatus === "paid" ? todayISO() : null,
+            paidAt: paymentStatus === "paid" ? paymentDate : null,
           }),
         }),
       ),
@@ -732,12 +747,13 @@ export default function CashFlow() {
     await Promise.all([flow.reload(), txs.reload(), yearTxs.reload()]);
   }
 
-  async function setPaymentStatus(tx: TxView, paymentStatus: TxPaymentStatus) {
+  async function setPaymentStatus(tx: TxView, paymentStatus: TxPaymentStatus, paidAt?: string) {
+    const paymentDate = (paidAt?.trim() || todayISO()).slice(0, 10);
     await api(`/transactions/${tx.id}`, {
       method: "PATCH",
       body: JSON.stringify({
         paymentStatus,
-        paidAt: paymentStatus === "paid" ? todayISO() : null,
+        paidAt: paymentStatus === "paid" ? paymentDate : null,
       }),
     });
     toast.success(
@@ -746,9 +762,46 @@ export default function CashFlow() {
     await Promise.all([flow.reload(), txs.reload(), yearTxs.reload()]);
   }
 
+  async function confirmMarkAsPaid() {
+    if (!payConfirm) return;
+    const paidAt = payConfirmDate.trim() || todayISO();
+    const extras = [...alsoSettleIds];
+    const target = payConfirm;
+    closePayConfirm();
+    if (target.mode === "single") {
+      const isFee = isMensalidadeName(target.tx.movementType?.name ?? "");
+      if (isFee && extras.length) {
+        const transactionIds = [target.tx.id, ...extras.filter((id) => id !== target.tx.id)];
+        try {
+          const result = await api<{ amount: number; settled?: number }>("/mensalidades/settle", {
+            method: "PATCH",
+            body: JSON.stringify({
+              transactionIds,
+              timing: "on_time",
+              paidAt,
+              notifyReceipt: true,
+            }),
+          });
+          const count = result.settled ?? transactionIds.length;
+          toast.success(
+            count === 1
+              ? `Mensalidade registrada (${brl(result.amount)}).`
+              : `${count} mensalidades registradas (${brl(result.amount)}).`,
+          );
+          await Promise.all([flow.reload(), txs.reload(), yearTxs.reload()]);
+        } catch (err) {
+          toast.error(err instanceof Error ? err.message : "Não foi possível registrar o pagamento");
+        }
+        return;
+      }
+      await setPaymentStatus(target.tx, "paid", paidAt);
+      return;
+    }
+    await setSplitGroupPaymentStatus(target.parts, "paid", paidAt);
+  }
+
   async function pullSicredi(quiet = false) {
     if (!sicredi.data?.configured) return;
-    setLiveSyncing(true);
     try {
       const result = await api<{ created: number; paid: number }>("/integrations/sicredi/sync", {
         method: "POST",
@@ -770,8 +823,6 @@ export default function CashFlow() {
       if (!quiet) {
         setError(err instanceof Error ? err.message : "Não foi possível ler o Sicredi");
       }
-    } finally {
-      setLiveSyncing(false);
     }
   }
 
@@ -841,6 +892,16 @@ export default function CashFlow() {
                 {t.splitCount ? `/${t.splitCount}` : ""}
               </Badge>
               <strong>{t.description}</strong>
+              {t.arrearsMarker === "embed" ? (
+                <span className="arrears-flag arrears-flag--embed" title="Mensalidade com parcela de acordo">
+                  <FaLink aria-hidden /> +acordo
+                </span>
+              ) : null}
+              {t.arrearsMarker === "agreement" ? (
+                <span className="arrears-flag arrears-flag--agreement" title="Lançamento de acordo / dívida">
+                  <FaHandHoldingUsd aria-hidden /> Acordo
+                </span>
+              ) : null}
               {t.hasNota || t.notaKey ? (
                 <span className="nota-flag" title={t.notaFileName || "Nota anexada"}>
                   <FaFileAlt aria-hidden /> Nota
@@ -850,6 +911,16 @@ export default function CashFlow() {
           ) : (
             <div className="tx-desc-row">
               <strong>{t.description}</strong>
+              {t.arrearsMarker === "embed" ? (
+                <span className="arrears-flag arrears-flag--embed" title="Mensalidade com parcela de acordo">
+                  <FaLink aria-hidden /> +acordo
+                </span>
+              ) : null}
+              {t.arrearsMarker === "agreement" ? (
+                <span className="arrears-flag arrears-flag--agreement" title="Lançamento de acordo / dívida">
+                  <FaHandHoldingUsd aria-hidden /> Acordo
+                </span>
+              ) : null}
               {t.hasNota || t.notaKey ? (
                 <span className="nota-flag" title={t.notaFileName || "Nota anexada"}>
                   <FaFileAlt aria-hidden /> Nota
@@ -882,7 +953,16 @@ export default function CashFlow() {
           <Badge kind={t.nature}>{natureLabel(t.nature)}</Badge>
         </td>
         <td>
-          <Badge kind={settlement}>{settlementLabel(settlement)}</Badge>
+          <div className="settlement-tags">
+            {settlement === "paid" ? (
+              <Badge kind="paid">{settlementLabel(settlement)}</Badge>
+            ) : (
+              <>
+                <Badge kind="unreconciled">Ainda não conciliado</Badge>
+                <Badge kind={settlement}>{settlementLabel(settlement)}</Badge>
+              </>
+            )}
+          </div>
         </td>
         <td className={`num ${signedClass(t.type === "income" ? t.amount : -t.amount)}`}>
           {t.type === "income" ? "+" : "−"} {brl(t.amount)}
@@ -898,7 +978,11 @@ export default function CashFlow() {
               <FaClock />
             </IconButton>
           ) : (
-            <IconButton label="Marcar como pago" tone="success" onClick={() => void setPaymentStatus(t, "paid")}>
+            <IconButton
+              label="Marcar como pago"
+              tone="success"
+              onClick={() => askMarkAsPaid({ mode: "single", tx: t })}
+            >
               <FaCheck />
             </IconButton>
           )}
@@ -942,32 +1026,16 @@ export default function CashFlow() {
       <PageHeader
         kicker="Fluxo de caixa"
         title="Entradas e saídas"
-        subtitle="Lançamentos do caixa com conciliação: pago em verde e não conciliado (pendente ou vencido) em azul. O Pix do Sicredi entra sozinho; linhas sem tipo ficam para identificar."
+        subtitle="Lançamentos do caixa: pago em verde, pendente em amarelo, vencido em vermelho. Tag azul marca o que ainda não foi conciliado. Pix do Sicredi entra pela Integração; linhas sem tipo ficam para identificar."
         actions={
           <div className="page-head__actions">
-            {sicredi.data?.configured ? (
-              <button
-                className="btn btn-outline"
-                type="button"
-                disabled={liveSyncing}
-                onClick={() => void pullSicredi()}
-              >
-                <span className={`live-dot${liveSyncing ? " is-spin" : ""}`} />
-                {liveSyncing ? "Lendo Sicredi…" : "Sicredi ao vivo"}
-              </button>
-            ) : sicredi.data ? (
-              <button className="btn btn-outline" type="button" onClick={() => navigate("/integracao")}>
-                <FaBroadcastTower /> Ligar Sicredi
-              </button>
-            ) : null}
+            <PageGuide guide={cashFlowGuide} />
             <button className="btn btn-primary" type="button" onClick={openCreate}>
               Lançamento manual
             </button>
           </div>
         }
       />
-
-      <IdentifyPaymentsGuide />
 
       <FetchOverlay active={refreshing} label="Atualizando lançamentos…">
         <div className="grid-stats">
@@ -986,7 +1054,8 @@ export default function CashFlow() {
                   : `${unidentified.length} lançamentos sem tipo definido`}
               </strong>
               <p className="muted" style={{ margin: "6px 0 0" }}>
-                Vieram do extrato e ainda não têm tipo de movimentação. Identifique um a um: tipo, associado e ramo.
+                Vieram do extrato e ainda não têm tipo de movimentação. Ao identificar, você edita todos os campos
+                (tipo, valor, datas, associado, ramo…).
               </p>
             </div>
             <button className="btn btn-primary" type="button" onClick={() => startIdentifyQueue(unidentified)}>
@@ -998,6 +1067,7 @@ export default function CashFlow() {
         <article className="card" style={{ marginTop: 16 }}>
           <h3 style={{ marginBottom: 12 }}>Lançamentos</h3>
           <FilterBar>
+            <PeriodField year={year} month={month} setYear={setYear} setMonth={setMonth} />
             <label className="field">
               <span>Buscar</span>
               <input
@@ -1008,56 +1078,71 @@ export default function CashFlow() {
             </label>
             <label className="field">
               <span>Entrada / saída</span>
-              <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as TxType | "")}>
-                <option value="">Todas</option>
-                <option value="income">Entrada</option>
-                <option value="expense">Saída</option>
-              </select>
+              <SearchableSelect
+                value={typeFilter}
+                onChange={(value) => setTypeFilter(value as TxType | "")}
+                placeholder="Todas"
+                options={[
+                  { value: "", label: "Todas" },
+                  { value: "income", label: "Entrada" },
+                  { value: "expense", label: "Saída" },
+                ]}
+              />
             </label>
             <label className="field">
               <span>Natureza</span>
-              <select value={natureFilter} onChange={(e) => setNatureFilter(e.target.value as TxNature | "")}>
-                <option value="">Todas</option>
-                <option value="fixed">Fixa</option>
-                <option value="variable">Variável</option>
-              </select>
+              <SearchableSelect
+                value={natureFilter}
+                onChange={(value) => setNatureFilter(value as TxNature | "")}
+                placeholder="Todas"
+                options={[
+                  { value: "", label: "Todas" },
+                  { value: "fixed", label: "Fixa" },
+                  { value: "variable", label: "Variável" },
+                ]}
+              />
             </label>
             <label className="field">
               <span>Ramo</span>
-              <select value={branchFilter} onChange={(e) => setBranchFilter(e.target.value as BranchId | "")}>
-                <option value="">Todos</option>
-                {ALL_BRANCHES.map((id) => (
-                  <option key={id} value={id}>
-                    {BRANCH_LABELS[id]}
-                  </option>
-                ))}
-              </select>
+              <SearchableSelect
+                value={branchFilter}
+                onChange={(value) => setBranchFilter(value as BranchId | "")}
+                placeholder="Todos"
+                options={[
+                  { value: "", label: "Todos" },
+                  ...ALL_BRANCHES.map((id) => ({ value: id, label: BRANCH_LABELS[id] })),
+                ]}
+              />
             </label>
             <label className="field">
               <span>Tipo de movimentação</span>
-              <select value={movementFilter} onChange={(e) => setMovementFilter(e.target.value)}>
-                <option value="">Todos</option>
-                <option value="__unidentified__">Não identificado</option>
-                {(types.data ?? [])
-                  .filter((t) => !isUnidentifiedName(t.name))
-                  .map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-              </select>
+              <SearchableSelect
+                value={movementFilter}
+                onChange={setMovementFilter}
+                placeholder="Todos"
+                searchPlaceholder="Buscar tipo…"
+                options={[
+                  { value: "", label: "Todos" },
+                  { value: "__unidentified__", label: "Não identificado" },
+                  ...(types.data ?? [])
+                    .filter((t) => !isUnidentifiedName(t.name))
+                    .map((t) => ({ value: t.id, label: t.name })),
+                ]}
+              />
             </label>
             <label className="field">
               <span>Conciliação</span>
-              <select
+              <SearchableSelect
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as "paid" | "pending" | "overdue" | "")}
-              >
-                <option value="">Todas</option>
-                <option value="paid">Pago</option>
-                <option value="pending">Pendente</option>
-                <option value="overdue">Vencido</option>
-              </select>
+                onChange={(value) => setStatusFilter(value as "paid" | "pending" | "overdue" | "")}
+                placeholder="Todas"
+                options={[
+                  { value: "", label: "Todas" },
+                  { value: "paid", label: "Pago" },
+                  { value: "pending", label: "Pendente" },
+                  { value: "overdue", label: "Vencido" },
+                ]}
+              />
             </label>
             <label className="field">
               <span>Vencimento</span>
@@ -1069,11 +1154,16 @@ export default function CashFlow() {
             </label>
             <label className="field">
               <span>Com rateio</span>
-              <select value={rateioFilter} onChange={(e) => setRateioFilter(e.target.value as "" | "yes" | "no")}>
-                <option value="">Todos</option>
-                <option value="yes">Sim</option>
-                <option value="no">Não</option>
-              </select>
+              <SearchableSelect
+                value={rateioFilter}
+                onChange={(value) => setRateioFilter(value as "" | "yes" | "no")}
+                placeholder="Todos"
+                options={[
+                  { value: "", label: "Todos" },
+                  { value: "yes", label: "Sim" },
+                  { value: "no", label: "Não" },
+                ]}
+              />
             </label>
           </FilterBar>
           {month && wantsUnidentified ? (
@@ -1142,7 +1232,7 @@ export default function CashFlow() {
                         if (row.kind === "single") {
                           const t = txById.get(row.txId);
                           if (!t) return [];
-                          return [renderTxRow(t, { allowSplit: true })];
+                          return [renderTxRow(t, { allowSplit: !t.splitGroupId })];
                         }
 
                         const parts = row.partIds
@@ -1150,10 +1240,14 @@ export default function CashFlow() {
                           .filter((item): item is TxView => Boolean(item));
                         if (!parts.length) return [];
                         const expanded = expandedGroups.has(row.groupId);
-                        const headSettlement = settlementOf(parts[0].paymentStatus, parts[0].date);
+                        const headSettlement = groupSettlementOf(parts);
                         const allPaid = parts.every((part) => settlementOf(part.paymentStatus, part.date) === "paid");
                         const dueDate = dueDateOf(parts[0]);
-                        const paidDate = paidDateOf(parts[0]);
+                        const paidDates = parts.map((part) => paidDateOf(part)).filter(Boolean);
+                        const paidDate =
+                          allPaid && paidDates.length ? (new Set(paidDates).size === 1 ? paidDates[0] : "") : "";
+                        const mixedSettlement =
+                          !allPaid && parts.some((part) => settlementOf(part.paymentStatus, part.date) === "paid");
                         const mixedTypes = new Set(parts.map((p) => p.movementType?.name).filter(Boolean));
                         const typeLabelText =
                           mixedTypes.size === 1 ? ([...mixedTypes][0] as string) : `${row.partCount} partes`;
@@ -1209,7 +1303,18 @@ export default function CashFlow() {
                               <Badge kind={parts[0].nature}>{natureLabel(parts[0].nature)}</Badge>
                             </td>
                             <td>
-                              <Badge kind={headSettlement}>{settlementLabel(headSettlement)}</Badge>
+                              <div className="settlement-tags">
+                                {allPaid ? (
+                                  <Badge kind="paid">{settlementLabel("paid")}</Badge>
+                                ) : (
+                                  <>
+                                    <Badge kind="unreconciled">
+                                      {mixedSettlement ? "Conciliação parcial" : "Ainda não conciliado"}
+                                    </Badge>
+                                    <Badge kind={headSettlement}>{settlementLabel(headSettlement)}</Badge>
+                                  </>
+                                )}
+                              </div>
                             </td>
                             <td className={`num ${signedClass(row.type === "income" ? row.total : -row.total)}`}>
                               {row.type === "income" ? "+" : "−"} {brl(row.total)}
@@ -1233,7 +1338,7 @@ export default function CashFlow() {
                                 <IconButton
                                   label="Marcar partes como pagas"
                                   tone="success"
-                                  onClick={() => void setSplitGroupPaymentStatus(parts, "paid")}
+                                  onClick={() => askMarkAsPaid({ mode: "split", parts })}
                                 >
                                   <FaCheck />
                                 </IconButton>
@@ -1288,7 +1393,17 @@ export default function CashFlow() {
 
       <AnimatePresence>
         {open ? (
-          <Modal title={editing ? "Alterar lançamento" : "Lançamento manual"} onClose={closeForm}>
+          <Modal
+            key={editing ? `edit-${editing.id}` : "create"}
+            title={
+              editing
+                ? identifyQueue.length > 1
+                  ? `Alterar lançamento · ${identifyIndex + 1} de ${identifyQueue.length}`
+                  : "Alterar lançamento"
+                : "Lançamento manual"
+            }
+            onClose={closeForm}
+          >
             <form onSubmit={onSave} className={formClass("form-grid", attempted)} noValidate>
               {error ? <div className="error wide">{error}</div> : null}
               <label className="field">
@@ -1306,42 +1421,45 @@ export default function CashFlow() {
                   required={form.paymentStatus === "paid"}
                   type="date"
                   value={form.paidAt}
+                  disabled={form.paymentStatus === "pending"}
                   onChange={(e) => setForm({ ...form, paidAt: e.target.value })}
                 />
+                {form.paymentStatus === "pending" ? (
+                  <small className="muted">Disponível ao marcar a situação como pago/conciliado.</small>
+                ) : null}
               </label>
               <label className="field">
                 <span>Situação</span>
-                <select
+                <SearchableSelect
                   required
                   value={form.paymentStatus}
-                  onChange={(e) => {
-                    const paymentStatus = e.target.value as TxPaymentStatus;
+                  placeholder="Selecione"
+                  onChange={(value) => {
+                    const paymentStatus = value as TxPaymentStatus;
                     setForm({
                       ...form,
                       paymentStatus,
-                      paidAt:
-                        paymentStatus === "pending"
-                          ? ""
-                          : paymentStatus === "paid"
-                            ? form.paidAt || form.date || todayISO()
-                            : form.paidAt,
+                      paidAt: paymentStatus === "pending" ? "" : form.paidAt || form.date || todayISO(),
                     });
                   }}
-                >
-                  <option value="paid">Pago</option>
-                  <option value="pending">Pendente</option>
-                </select>
+                  options={[
+                    { value: "paid", label: "Pago" },
+                    { value: "pending", label: "Pendente" },
+                  ]}
+                />
               </label>
               <label className="field">
                 <span>Entrada ou saída</span>
-                <select
+                <SearchableSelect
                   required
                   value={form.type}
-                  onChange={(e) => setForm({ ...form, type: e.target.value as TxType, movementTypeId: "" })}
-                >
-                  <option value="income">Entrada</option>
-                  <option value="expense">Saída</option>
-                </select>
+                  placeholder="Selecione"
+                  onChange={(value) => setForm({ ...form, type: value as TxType, movementTypeId: "" })}
+                  options={[
+                    { value: "income", label: "Entrada" },
+                    { value: "expense", label: "Saída" },
+                  ]}
+                />
               </label>
               <div className="field">
                 <span>
@@ -1369,33 +1487,34 @@ export default function CashFlow() {
               </div>
               <label className="field">
                 <span>Tipo de movimentação</span>
-                <select
+                <SearchableSelect
                   required
                   value={form.movementTypeId}
-                  onChange={(e) => {
-                    const movementTypeId = e.target.value;
+                  placeholder="Selecione"
+                  searchPlaceholder="Buscar tipo…"
+                  onChange={(movementTypeId) => {
                     const next = (types.data ?? []).find((item) => item.id === movementTypeId);
                     const branch = next?.branch || form.branch;
                     setForm({
                       ...form,
                       movementTypeId,
+                      nature: next ? natureForTypeName(next.name) : form.nature,
                       date: form.date || form.paidAt,
                       paidAt: form.paymentStatus === "paid" ? form.paidAt || form.date : form.paidAt,
                       branch,
                       projectId: form.projectId || suggestProjectId(movementTypeId, branch),
                     });
                   }}
-                >
-                  <option value="">Selecione</option>
-                  {allowedTypes.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                      {t.branch && t.branch !== "grupo" ? ` · ${BRANCH_LABELS[t.branch]}` : ""}
-                      {!t.active ? " (inativo)" : ""}
-                      {t.direction !== "both" && t.direction !== form.type ? " · direção diferente" : ""}
-                    </option>
-                  ))}
-                </select>
+                  options={[
+                    { value: "", label: "Selecione" },
+                    ...allowedTypes.map((t) => ({
+                      value: t.id,
+                      label: `${t.name}${t.branch && t.branch !== "grupo" ? ` · ${BRANCH_LABELS[t.branch]}` : ""}${
+                        !t.active ? " (inativo)" : ""
+                      }${t.direction !== "both" && t.direction !== form.type ? " · direção diferente" : ""}`,
+                    })),
+                  ]}
+                />
               </label>
               <label className="field wide">
                 <span>Descrição</span>
@@ -1418,50 +1537,53 @@ export default function CashFlow() {
               </label>
               <label className="field">
                 <span>Ramo</span>
-                <select
+                <SearchableSelect
                   required
                   value={form.branch}
-                  onChange={(e) => {
-                    const branch = e.target.value as BranchId;
+                  placeholder="Selecione"
+                  onChange={(value) => {
+                    const branch = value as BranchId;
                     setForm({
                       ...form,
                       branch,
                       projectId: form.projectId || suggestProjectId(form.movementTypeId, branch),
                     });
                   }}
-                >
-                  {ALL_BRANCHES.map((id) => (
-                    <option key={id} value={id}>
-                      {BRANCH_LABELS[id]}
-                    </option>
-                  ))}
-                </select>
+                  options={ALL_BRANCHES.map((id) => ({ value: id, label: BRANCH_LABELS[id] }))}
+                />
               </label>
               <label className="field">
                 <span>Associado (opcional)</span>
-                <select value={form.memberId} onChange={(e) => onMemberChange(e.target.value)}>
-                  <option value="">Sem associado</option>
-                  {(members.data ?? []).map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name} · {BRANCH_LABELS[m.branch]}
-                    </option>
-                  ))}
-                </select>
+                <SearchableSelect
+                  value={form.memberId}
+                  onChange={onMemberChange}
+                  placeholder="Sem associado"
+                  searchPlaceholder="Buscar associado…"
+                  options={[
+                    { value: "", label: "Sem associado" },
+                    ...(members.data ?? []).map((m) => ({
+                      value: m.id,
+                      label: `${m.name} · ${BRANCH_LABELS[m.branch]}`,
+                    })),
+                  ]}
+                />
               </label>
               {selectedMember?.role === "jovem" ? (
                 <label className="field">
                   <span>Responsável</span>
-                  <select
+                  <SearchableSelect
                     value={form.memberGuardianId}
-                    onChange={(e) => setForm({ ...form, memberGuardianId: e.target.value })}
-                  >
-                    <option value="">Não informar</option>
-                    {selectedGuardians.map((guardian) => (
-                      <option key={guardian.id} value={guardian.id}>
-                        {guardian.name} · {guardian.relationship}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(memberGuardianId) => setForm({ ...form, memberGuardianId })}
+                    placeholder="Não informar"
+                    searchPlaceholder="Buscar responsável…"
+                    options={[
+                      { value: "", label: "Não informar" },
+                      ...selectedGuardians.map((guardian) => ({
+                        value: guardian.id,
+                        label: `${guardian.name} · ${guardian.relationship}`,
+                      })),
+                    ]}
+                  />
                   {selectedGuardians.length === 0 ? (
                     <span className="muted">Cadastre o responsável no associado para vincular neste lançamento.</span>
                   ) : null}
@@ -1469,44 +1591,52 @@ export default function CashFlow() {
               ) : null}
               <label className="field">
                 <span>Conta do pagamento</span>
-                <select
+                <SearchableSelect
                   value={form.memberAccountId}
-                  onChange={(e) => setForm({ ...form, memberAccountId: e.target.value })}
+                  onChange={(memberAccountId) => setForm({ ...form, memberAccountId })}
+                  placeholder="Não informar"
+                  searchPlaceholder="Buscar conta…"
                   disabled={!selectedMember}
-                >
-                  <option value="">Não informar</option>
-                  {(selectedMember?.accounts ?? []).map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.holderName} · {a.relationship}
-                    </option>
-                  ))}
-                </select>
+                  options={[
+                    { value: "", label: "Não informar" },
+                    ...(selectedMember?.accounts ?? []).map((a) => ({
+                      value: a.id,
+                      label: `${a.holderName} · ${a.relationship}`,
+                    })),
+                  ]}
+                />
               </label>
               <label className="field">
                 <span>Previsão de gastos</span>
-                <select value={form.projectId} onChange={(e) => setForm({ ...form, projectId: e.target.value })}>
-                  <option value="">Nenhuma</option>
-                  {(projects.data ?? []).map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                      {p.branch ? ` · ${BRANCH_LABELS[p.branch]}` : ""}
-                    </option>
-                  ))}
-                </select>
+                <SearchableSelect
+                  value={form.projectId}
+                  onChange={(projectId) => setForm({ ...form, projectId })}
+                  placeholder="Nenhuma"
+                  searchPlaceholder="Buscar previsão…"
+                  options={[
+                    { value: "", label: "Nenhuma" },
+                    ...(projects.data ?? []).map((p) => ({
+                      value: p.id,
+                      label: `${p.name}${p.branch ? ` · ${BRANCH_LABELS[p.branch]}` : ""}`,
+                    })),
+                  ]}
+                />
               </label>
               <label className="field">
                 <span>Meio</span>
-                <select
+                <SearchableSelect
                   required
                   value={form.method}
-                  onChange={(e) => setForm({ ...form, method: e.target.value as PaymentMethod })}
-                >
-                  <option value="pix">Pix</option>
-                  <option value="transfer">Transferência</option>
-                  <option value="cash">Dinheiro</option>
-                  <option value="card">Cartão</option>
-                  <option value="other">Outro</option>
-                </select>
+                  placeholder="Selecione"
+                  onChange={(value) => setForm({ ...form, method: value as PaymentMethod })}
+                  options={[
+                    { value: "pix", label: "Pix" },
+                    { value: "transfer", label: "Transferência" },
+                    { value: "cash", label: "Dinheiro" },
+                    { value: "card", label: "Cartão" },
+                    { value: "other", label: "Outro" },
+                  ]}
+                />
               </label>
               <label className="field wide">
                 <span>Nota (PDF ou imagem)</span>
@@ -1550,114 +1680,6 @@ export default function CashFlow() {
                 {selectedMember ? ` · ${selectedMember.name}` : ""}
               </p>
               <div className="modal-actions wide">
-                <button className="btn btn-ghost" type="button" onClick={closeForm} disabled={saving}>
-                  Cancelar
-                </button>
-                <SubmitButton busy={saving} busyLabel={editing ? "Salvando…" : "Lançando…"}>
-                  {editing ? "Salvar alteração" : "Lançar"}
-                </SubmitButton>
-              </div>
-            </form>
-          </Modal>
-        ) : null}
-        {identifying ? (
-          <Modal
-            title={
-              identifyQueue.length > 1
-                ? `Identificar lançamento · ${identifyIndex + 1} de ${identifyQueue.length}`
-                : "Identificar lançamento"
-            }
-            onClose={closeForm}
-          >
-            <form onSubmit={(event) => void onIdentify(event)} className={formClass("form-grid", attempted)} noValidate>
-              {error ? <div className="error wide">{error}</div> : null}
-              <p className="muted wide">
-                {formatDate(identifying.date)} · {typeLabel(identifying.type)} · {brl(identifying.amount)}
-                <br />
-                {identifying.description}
-              </p>
-              <label className="field wide">
-                <span>
-                  Tipo de movimentação
-                  <abbr className="req" title="Obrigatório">
-                    *
-                  </abbr>
-                </span>
-                <select
-                  required
-                  value={form.movementTypeId}
-                  onChange={(e) => {
-                    const movement = (types.data ?? []).find((item) => item.id === e.target.value);
-                    setForm({
-                      ...form,
-                      movementTypeId: e.target.value,
-                      nature: movement ? natureForTypeName(movement.name) : form.nature,
-                      branch: movement?.branch || form.branch,
-                    });
-                  }}
-                >
-                  <option value="">Selecione o tipo</option>
-                  {identifyTypes.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name}
-                      {item.branch && item.branch !== "grupo" ? ` · ${BRANCH_LABELS[item.branch]}` : ""}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="field">
-                <span>Associado (opcional)</span>
-                <select value={form.memberId} onChange={(e) => onMemberChange(e.target.value)}>
-                  <option value="">Sem associado</option>
-                  {(members.data ?? []).map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name} · {BRANCH_LABELS[m.branch]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {selectedMember?.role === "jovem" ? (
-                <label className="field">
-                  <span>Responsável</span>
-                  <select
-                    value={form.memberGuardianId}
-                    onChange={(e) => setForm({ ...form, memberGuardianId: e.target.value })}
-                  >
-                    <option value="">Não informar</option>
-                    {selectedGuardians.map((guardian) => (
-                      <option key={guardian.id} value={guardian.id}>
-                        {guardian.name} · {guardian.relationship}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : null}
-              <label className="field">
-                <span>Ramo</span>
-                <select
-                  required
-                  value={form.branch}
-                  onChange={(e) => {
-                    const branch = e.target.value as BranchId;
-                    setForm({
-                      ...form,
-                      branch,
-                      projectId: form.projectId || suggestProjectId(form.movementTypeId, branch),
-                    });
-                  }}
-                >
-                  {ALL_BRANCHES.map((id) => (
-                    <option key={id} value={id}>
-                      {BRANCH_LABELS[id]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <p className="muted wide">
-                Natureza: {natureLabel(form.nature)} · {typeLabel(form.type)}
-                {selectedMember ? ` · ${selectedMember.name}` : ""}
-              </p>
-              <div className="modal-actions wide">
                 {identifyQueue.length > 1 ? (
                   <button className="btn btn-ghost" type="button" onClick={skipIdentify} disabled={saving}>
                     Pular
@@ -1667,8 +1689,8 @@ export default function CashFlow() {
                     Cancelar
                   </button>
                 )}
-                <SubmitButton busy={saving} busyLabel="Identificando…">
-                  Identificar
+                <SubmitButton busy={saving} busyLabel={editing ? "Salvando…" : "Lançando…"}>
+                  {editing ? (identifyQueue.length ? "Salvar e continuar" : "Salvar alteração") : "Lançar"}
                 </SubmitButton>
               </div>
             </form>
@@ -1686,9 +1708,9 @@ export default function CashFlow() {
               {error ? <div className="error wide">{error}</div> : null}
               <p className="muted wide">
                 {formatDate(splitting.date)} · total {brl(splitting.amount)} · {splitting.description}. Cada parte vira
-                um lançamento; a soma precisa ser exatamente o total. Em mensalidade de irmãos, escolha o{" "}
-                <strong>associado</strong> em cada parte — o fluxo de caixa mostra o valor original e para quem foi o
-                rateio.
+                um lançamento; a soma precisa ser exatamente o total. Serve para qualquer tipo (mensalidade, projeto,
+                cantina, despesas etc.): escolha a rubrica e, se fizer sentido, o <strong>associado</strong> em cada
+                parte — o fluxo de caixa mantém o valor original e mostra para quem foi o rateio.
               </p>
               {splitParts.map((part, index) => (
                 <div key={index} className="wide form-grid split-part">
@@ -1703,40 +1725,44 @@ export default function CashFlow() {
                   </label>
                   <label className="field">
                     <span>Tipo</span>
-                    <select
+                    <SearchableSelect
                       required
                       value={part.movementTypeId}
-                      onChange={(e) => updateSplitPart(index, { movementTypeId: e.target.value })}
-                    >
-                      <option value="">Selecione</option>
-                      {(types.data ?? [])
-                        .filter(
-                          (item) => item.active && (item.direction === "both" || item.direction === splitting.type),
-                        )
-                        .map((item) => (
-                          <option key={item.id} value={item.id}>
-                            {item.name}
-                            {item.branch && item.branch !== "grupo" ? ` · ${BRANCH_LABELS[item.branch]}` : ""}
-                          </option>
-                        ))}
-                    </select>
+                      placeholder="Selecione"
+                      searchPlaceholder="Buscar tipo…"
+                      onChange={(movementTypeId) => updateSplitPart(index, { movementTypeId })}
+                      options={[
+                        { value: "", label: "Selecione" },
+                        ...(types.data ?? [])
+                          .filter(
+                            (item) => item.active && (item.direction === "both" || item.direction === splitting.type),
+                          )
+                          .map((item) => ({
+                            value: item.id,
+                            label: `${item.name}${
+                              item.branch && item.branch !== "grupo" ? ` · ${BRANCH_LABELS[item.branch]}` : ""
+                            }`,
+                          })),
+                      ]}
+                    />
                   </label>
                   <label className="field">
                     <span>Associado (opcional)</span>
-                    <select
+                    <SearchableSelect
                       value={part.memberId}
-                      onChange={(e) => updateSplitPart(index, { memberId: e.target.value })}
-                    >
-                      <option value="">Sem associado</option>
-                      {(members.data ?? [])
-                        .filter((item) => item.status === "active")
-                        .map((item) => (
-                          <option key={item.id} value={item.id}>
-                            {item.name}
-                            {item.branch ? ` · ${BRANCH_LABELS[item.branch]}` : ""}
-                          </option>
-                        ))}
-                    </select>
+                      placeholder="Sem associado"
+                      searchPlaceholder="Buscar associado…"
+                      onChange={(memberId) => updateSplitPart(index, { memberId })}
+                      options={[
+                        { value: "", label: "Sem associado" },
+                        ...(members.data ?? [])
+                          .filter((item) => item.status === "active")
+                          .map((item) => ({
+                            value: item.id,
+                            label: `${item.name}${item.branch ? ` · ${BRANCH_LABELS[item.branch]}` : ""}`,
+                          })),
+                      ]}
+                    />
                   </label>
                   <label className="field wide">
                     <span>Descrição</span>
@@ -1808,6 +1834,67 @@ export default function CashFlow() {
               void Promise.all([flow.reload(), txs.reload(), yearTxs.reload()]);
             }}
           />
+        ) : null}
+        {payConfirm ? (
+          <Modal
+            key="pay-confirm"
+            title={payConfirm.mode === "split" ? "Marcar partes como pagas" : "Marcar como pago"}
+            onClose={closePayConfirm}
+          >
+            <p className="muted">
+              {payConfirm.mode === "split"
+                ? `Confirme a data de pagamento das ${payConfirm.parts.length} partes do rateio.`
+                : `Confirme a data de pagamento de “${payConfirm.tx.description}”.`}
+            </p>
+            <label className="field">
+              <span>Data de pagamento</span>
+              <input type="date" value={payConfirmDate} onChange={(e) => setPayConfirmDate(e.target.value)} />
+              <small className="muted">Se deixar em branco, usamos a data de hoje.</small>
+            </label>
+            {payConfirm.mode === "single" && payConfirmOtherMonths.length ? (
+              <fieldset className="field wide" style={{ border: "none", padding: 0, margin: 0 }}>
+                <legend className="muted" style={{ marginBottom: 8 }}>
+                  Baixar também outros meses (adiantamento)
+                </legend>
+                {payConfirmOtherMonths.map((item) => {
+                  const monthNum = Number(item.date.slice(5, 7));
+                  const checked = alsoSettleIds.includes(item.id);
+                  return (
+                    <label key={item.id} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) =>
+                          setAlsoSettleIds((current) =>
+                            e.target.checked ? [...current, item.id] : current.filter((id) => id !== item.id),
+                          )
+                        }
+                      />
+                      <span>
+                        {MONTHS[monthNum - 1] ?? item.date.slice(0, 7)} · {brl(item.amount)}
+                        {item.member?.name ? ` · ${item.member.name}` : ""}
+                      </span>
+                    </label>
+                  );
+                })}
+                {alsoSettleIds.length ? (
+                  <p className="muted" style={{ marginTop: 8 }}>
+                    Total com adiantamento: <strong>{brl(payConfirmAdvanceTotal)}</strong> ({1 + alsoSettleIds.length}{" "}
+                    mensalidades)
+                  </p>
+                ) : null}
+              </fieldset>
+            ) : null}
+            <div className="modal-actions">
+              <button type="button" className="btn btn-ghost" onClick={closePayConfirm}>
+                Cancelar
+              </button>
+              <button type="button" className="btn" onClick={() => void confirmMarkAsPaid()}>
+                Confirmar pagamento
+                {payConfirm.mode === "single" && alsoSettleIds.length ? ` (${1 + alsoSettleIds.length} meses)` : ""}
+              </button>
+            </div>
+          </Modal>
         ) : null}
       </AnimatePresence>
     </div>

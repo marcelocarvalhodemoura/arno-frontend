@@ -15,12 +15,13 @@ import {
   type TxPaymentStatus,
   type TxType,
 } from "@/domain";
-import IdentifyPaymentsGuide from "@/shared/ui/IdentifyPaymentsGuide";
 import SicrediLive from "@/features/integration/SicrediLive";
 import PageHeader from "@/shared/ui/PageHeader";
+import { PageGuide, integrationGuide } from "@/features/help";
 import PageLoader from "@/shared/ui/PageLoader";
 import FetchOverlay from "@/shared/ui/FetchOverlay";
 import SubmitButton from "@/shared/ui/SubmitButton";
+import SearchableSelect from "@/shared/ui/SearchableSelect";
 import { FaDownload, FaFileImport } from "react-icons/fa";
 import { useToast } from "@/shared/feedback/toast";
 import { brl, downloadCsv, formatDate, roleLabel } from "@/shared/lib/format";
@@ -428,20 +429,23 @@ export default function Integration() {
         title="Extratos e associados"
         subtitle="A tesouraria lê o Pix do Sicredi em tempo real, concilia com o caixa e ainda importa planilha ou PDF do extrato quando precisar do movimento completo."
         actions={
-          kind === "sicredi" ? null : (
-            <button
-              className="btn btn-outline"
-              type="button"
-              onClick={() =>
-                downloadCsv(
-                  kind === "members" ? "modelo-associados.csv" : "modelo-extrato.csv",
-                  kind === "members" ? MEMBER_TEMPLATE : TX_TEMPLATE,
-                )
-              }
-            >
-              <FaDownload /> Baixar modelo
-            </button>
-          )
+          <div className="page-head__actions">
+            <PageGuide guide={integrationGuide} />
+            {kind === "sicredi" ? null : (
+              <button
+                className="btn btn-outline"
+                type="button"
+                onClick={() =>
+                  downloadCsv(
+                    kind === "members" ? "modelo-associados.csv" : "modelo-extrato.csv",
+                    kind === "members" ? MEMBER_TEMPLATE : TX_TEMPLATE,
+                  )
+                }
+              >
+                <FaDownload /> Baixar modelo
+              </button>
+            )}
+          </div>
         }
       />
 
@@ -470,8 +474,6 @@ export default function Integration() {
       </div>
 
       {kind === "sicredi" ? <SicrediLive /> : null}
-
-      {kind === "transactions" ? <IdentifyPaymentsGuide defaultOpen /> : null}
 
       {kind !== "sicredi" ? (
         <FetchOverlay
@@ -594,13 +596,15 @@ export default function Integration() {
                           </td>
                           <td>{row.amount ? brl(row.amount) : "—"}</td>
                           <td>
-                            <select
+                            <SearchableSelect
                               value={row.movementTypeId}
                               aria-label={`Tipo linha ${row.line}`}
-                              onChange={(event) => {
-                                const movement = types.data?.find((item) => item.id === event.target.value);
+                              placeholder="Selecione"
+                              searchPlaceholder="Buscar tipo…"
+                              onChange={(movementTypeId) => {
+                                const movement = types.data?.find((item) => item.id === movementTypeId);
                                 patchTx(row.line, {
-                                  movementTypeId: event.target.value,
+                                  movementTypeId,
                                   movementTypeName: movement?.name ?? "",
                                   type:
                                     movement?.direction === "expense" || movement?.direction === "income"
@@ -608,66 +612,63 @@ export default function Integration() {
                                       : row.type,
                                 });
                               }}
-                            >
-                              <option value="">Selecione</option>
-                              {(types.data ?? [])
-                                .filter(
-                                  (item) =>
-                                    item.id === row.movementTypeId ||
-                                    (item.active && (item.direction === "both" || item.direction === row.type)),
-                                )
-                                .map((item) => (
-                                  <option key={item.id} value={item.id}>
-                                    {item.name}
-                                  </option>
-                                ))}
-                            </select>
+                              options={[
+                                { value: "", label: "Selecione" },
+                                ...(types.data ?? [])
+                                  .filter(
+                                    (item) =>
+                                      item.id === row.movementTypeId ||
+                                      (item.active && (item.direction === "both" || item.direction === row.type)),
+                                  )
+                                  .map((item) => ({ value: item.id, label: item.name })),
+                              ]}
+                            />
                           </td>
                           <td>
-                            <select
+                            <SearchableSelect
                               value={row.memberId ?? ""}
                               aria-label={`Associado linha ${row.line}`}
-                              onChange={(event) => patchTx(row.line, { memberId: event.target.value || undefined })}
-                            >
-                              <option value="">Sem associado</option>
-                              {(members.data ?? []).map((member) => (
-                                <option key={member.id} value={member.id}>
-                                  {member.name}
-                                </option>
-                              ))}
-                            </select>
+                              placeholder="Sem associado"
+                              searchPlaceholder="Buscar associado…"
+                              onChange={(memberId) => patchTx(row.line, { memberId: memberId || undefined })}
+                              options={[
+                                { value: "", label: "Sem associado" },
+                                ...(members.data ?? []).map((member) => ({
+                                  value: member.id,
+                                  label: member.name,
+                                })),
+                              ]}
+                            />
                           </td>
                           <td>
-                            <select
+                            <SearchableSelect
                               value={row.memberGuardianId ?? ""}
                               aria-label={`Responsável linha ${row.line}`}
+                              placeholder="Não informar"
+                              searchPlaceholder="Buscar responsável…"
                               disabled={!row.memberId}
-                              onChange={(event) =>
-                                patchTx(row.line, { memberGuardianId: event.target.value || undefined })
+                              onChange={(memberGuardianId) =>
+                                patchTx(row.line, { memberGuardianId: memberGuardianId || undefined })
                               }
-                            >
-                              <option value="">Não informar</option>
-                              {(members.data ?? [])
-                                .find((item) => item.id === row.memberId)
-                                ?.guardians?.map((guardian) => (
-                                  <option key={guardian.id} value={guardian.id}>
-                                    {guardian.name}
-                                  </option>
-                                ))}
-                            </select>
+                              options={[
+                                { value: "", label: "Não informar" },
+                                ...((members.data ?? [])
+                                  .find((item) => item.id === row.memberId)
+                                  ?.guardians?.map((guardian) => ({
+                                    value: guardian.id,
+                                    label: guardian.name,
+                                  })) ?? []),
+                              ]}
+                            />
                           </td>
                           <td>
-                            <select
+                            <SearchableSelect
                               value={row.branch}
                               aria-label={`Ramo linha ${row.line}`}
-                              onChange={(event) => patchTx(row.line, { branch: event.target.value as BranchId })}
-                            >
-                              {ALL_BRANCHES.map((id) => (
-                                <option key={id} value={id}>
-                                  {BRANCH_LABELS[id]}
-                                </option>
-                              ))}
-                            </select>
+                              placeholder="Ramo"
+                              onChange={(value) => patchTx(row.line, { branch: value as BranchId })}
+                              options={ALL_BRANCHES.map((id) => ({ value: id, label: BRANCH_LABELS[id] }))}
+                            />
                           </td>
                           <td>
                             {row.error ? (

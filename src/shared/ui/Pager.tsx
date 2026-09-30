@@ -1,4 +1,5 @@
 import { PAGE_SIZES, type PageSize } from "@/shared/lib/listing";
+import SearchableSelect from "@/shared/ui/SearchableSelect";
 
 type Props = {
   total: number;
@@ -11,32 +12,19 @@ type Props = {
   onPage: (page: number | ((current: number) => number)) => void;
 };
 
-export default function Pager({
-  total,
-  fromRow,
-  toRow,
-  pageSize,
-  currentPage,
-  pageCount,
-  onPageSize,
-  onPage,
-}: Props) {
+export default function Pager({ total, fromRow, toRow, pageSize, currentPage, pageCount, onPageSize, onPage }: Props) {
   return (
     <div className="pager">
       <span className="muted">{total ? `Mostrando ${fromRow}–${toRow} de ${total}` : "Nenhum registro"}</span>
       <label className="pager__size">
         <span>Por página</span>
-        <select
-          value={pageSize}
-          onChange={(e) => onPageSize(Number(e.target.value) as PageSize)}
+        <SearchableSelect
+          value={String(pageSize)}
+          onChange={(value) => onPageSize(Number(value) as PageSize)}
           aria-label="Por página"
-        >
-          {PAGE_SIZES.map((size) => (
-            <option key={size} value={size}>
-              {size}
-            </option>
-          ))}
-        </select>
+          placeholder="Por página"
+          options={PAGE_SIZES.map((size) => ({ value: String(size), label: String(size) }))}
+        />
       </label>
       <div className="pager__nav">
         <button

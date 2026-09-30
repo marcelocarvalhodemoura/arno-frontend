@@ -13,6 +13,9 @@ import IntegrationPage from "@/features/integration/IntegrationPage";
 import Layout from "@/features/layout/Layout";
 import MembersPage from "@/features/members/MembersPage";
 import MensalidadesPage from "@/features/mensalidades/MensalidadesPage";
+import ClubRemittancePage from "@/features/club-remittance/ClubRemittancePage";
+import SnackFundPage from "@/features/snack-fund/SnackFundPage";
+import ArrearsPage from "@/features/arrears/ArrearsPage";
 import ProjectsPage from "@/features/projects/ProjectsPage";
 import ReportsPage from "@/features/reports/ReportsPage";
 import SettingsPage from "@/features/settings/SettingsPage";
@@ -20,7 +23,7 @@ import SessionSplash from "@/shared/ui/SessionSplash";
 
 function Shell() {
   const [year, setYear] = useState(2026);
-  const [month, setMonth] = useState(8);
+  const [month, setMonth] = useState(0);
   return (
     <RequireSession>
       <Layout year={year} month={month} setYear={setYear} setMonth={setMonth} />
@@ -64,6 +67,9 @@ export function AppRouter() {
               />
               <Route path="fluxo" element={<CashFlowPage />} />
               <Route path="mensalidades" element={<MensalidadesPage />} />
+              <Route path="repasse-clube" element={<ClubRemittancePage />} />
+              <Route path="taxa-lanche" element={<SnackFundPage />} />
+              <Route path="dividas" element={<ArrearsPage />} />
               <Route path="integracao" element={<IntegrationPage />} />
               <Route path="tipos" element={<MovementTypesPage />} />
               <Route path="taxas" element={<FeesPage />} />

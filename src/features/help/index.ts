@@ -1,0 +1,17 @@
+export { default as PageGuide } from "@/features/help/PageGuide";
+export { default as GuideDrawer } from "@/features/help/GuideDrawer";
+export { cashFlowGuide } from "@/features/help/guides/cash-flow";
+export { membersGuide } from "@/features/help/guides/members";
+export { mensalidadesGuide } from "@/features/help/guides/mensalidades";
+export { clubRemittanceGuide } from "@/features/help/guides/club-remittance";
+export { snackFundGuide } from "@/features/help/guides/snack-fund";
+export { integrationGuide } from "@/features/help/guides/integration";
+export { dashboardGuide } from "@/features/help/guides/dashboard";
+export { arrearsGuide } from "@/features/help/guides/arrears";
+export { projectsGuide } from "@/features/help/guides/projects";
+export { usersGuide } from "@/features/help/guides/users";
+export { feesGuide } from "@/features/help/guides/fees";
+export { movementTypesGuide } from "@/features/help/guides/movement-types";
+export { settingsGuide } from "@/features/help/guides/settings";
+export { reportsGuide } from "@/features/help/guides/reports";
+export type { PageGuideContent, GuideStep, GuideMedia } from "@/features/help/types";

@@ -10,7 +10,7 @@ import {
 } from "@/domain";
 import RecordStamp from "@/shared/ui/RecordStamp";
 import PageHeader from "@/shared/ui/PageHeader";
-import IdentifyPaymentsGuide from "@/shared/ui/IdentifyPaymentsGuide";
+import { PageGuide, projectsGuide } from "@/features/help";
 import Modal from "@/shared/ui/Modal";
 import { Badge } from "@/shared/ui/StatCard";
 import PageLoader from "@/shared/ui/PageLoader";
@@ -20,6 +20,7 @@ import SubmitButton from "@/shared/ui/SubmitButton";
 import FilterBar from "@/shared/ui/FilterBar";
 import Pager from "@/shared/ui/Pager";
 import IconButton from "@/shared/ui/IconButton";
+import SearchableSelect from "@/shared/ui/SearchableSelect";
 import { AnimatePresence } from "framer-motion";
 import { FaPen } from "react-icons/fa";
 import { api } from "@/core/http";
@@ -31,6 +32,8 @@ import { formatMoney, maskMoney, parseMoney } from "@/shared/lib/masks";
 import { formClass, submitAttempt } from "@/shared/lib/form";
 import { usePeriod } from "@/shared/lib/period";
 import { useFetch } from "@/shared/hooks/use-fetch";
+import { useFlashId } from "@/shared/hooks/use-flash-id";
+import { AnimatedRow, AnimatedTableBody } from "@/shared/ui/AnimatedTable";
 
 type ProjectView = FinancialProject & {
   actuals: {
@@ -59,6 +62,7 @@ export default function Projects() {
   const [branch, setBranch] = useState<BranchId>("filhote");
   const list = useFetch<ProjectView[]>(`/projects?year=${year}&branch=${branch}`);
   const types = useFetch<MovementType[]>("/movement-types");
+  const [flashId, flash] = useFlashId();
   const [editing, setEditing] = useState<ProjectView | null>(null);
   const [creating, setCreating] = useState(false);
   const [createForm, setCreateForm] = useState({ name: "", description: "" });
@@ -171,6 +175,7 @@ export default function Projects() {
         method: "PATCH",
         body: JSON.stringify({ items }),
       });
+      flash(nextItem.id);
       closeEditItem();
       await list.reload();
       toast.success(editingItem.id ? "Item da previsão alterado." : "Item incluído na previsão.");
@@ -191,26 +196,27 @@ export default function Projects() {
         title={`Orçamento anual · ${year}`}
         subtitle="Defina o planejado por ramo e acompanhe o realizado pelos lançamentos do caixa vinculados a esta previsão."
         actions={
-          !project ? (
-            <button
-              className="btn btn-primary"
-              type="button"
-              onClick={() => {
-                setAttempted(false);
-                setCreating(true);
-              }}
-            >
-              Nova previsão
-            </button>
-          ) : (
-            <button className="btn btn-outline" type="button" onClick={openNewItem}>
-              Incluir item
-            </button>
-          )
+          <div className="page-head__actions">
+            <PageGuide guide={projectsGuide} />
+            {!project ? (
+              <button
+                className="btn btn-primary"
+                type="button"
+                onClick={() => {
+                  setAttempted(false);
+                  setCreating(true);
+                }}
+              >
+                Nova previsão
+              </button>
+            ) : (
+              <button className="btn btn-outline" type="button" onClick={openNewItem}>
+                Incluir item
+              </button>
+            )}
+          </div>
         }
       />
-
-      <IdentifyPaymentsGuide />
 
       <div className="tabs">
         {TABS.map((item) => (
@@ -313,43 +319,35 @@ export default function Projects() {
                     <th className="cell-actions">Ações</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {listing.pageRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="muted">
-                        Nenhum item com esses filtros.
-                      </td>
-                    </tr>
-                  ) : (
-                    listing.pageRows.map((item) => {
-                      const actual =
-                        project.actuals.byItem?.find((row) => row.itemId === item.id)?.expense ??
-                        project.actuals.byCategory.find((c) => c.category === item.category)?.expense ??
-                        0;
-                      const rest = item.planned - actual;
-                      const status = budgetStatus(item.planned, actual, paceMonth);
-                      return (
-                        <tr key={item.id}>
-                          <td>{item.description}</td>
-                          <td>
-                            <Badge kind="fixed">{item.category}</Badge>
-                          </td>
-                          <td className="num">{brl(item.planned)}</td>
-                          <td className="num">{brl(actual)}</td>
-                          <td className={`num ${rest < 0 ? "is-neg" : "is-pos"}`}>{brl(rest)}</td>
-                          <td>
-                            <StatusBadge status={status} />
-                          </td>
-                          <td className="cell-actions">
-                            <IconButton label="Alterar item" onClick={() => openEditItem(item)}>
-                              <FaPen />
-                            </IconButton>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
+                <AnimatedTableBody emptyColSpan={7} emptyMessage="Nenhum item com esses filtros.">
+                  {listing.pageRows.map((item, index) => {
+                    const actual =
+                      project.actuals.byItem?.find((row) => row.itemId === item.id)?.expense ??
+                      project.actuals.byCategory.find((c) => c.category === item.category)?.expense ??
+                      0;
+                    const rest = item.planned - actual;
+                    const status = budgetStatus(item.planned, actual, paceMonth);
+                    return (
+                      <AnimatedRow key={item.id} index={index} flash={flashId === item.id}>
+                        <td>{item.description}</td>
+                        <td>
+                          <Badge kind="fixed">{item.category}</Badge>
+                        </td>
+                        <td className="num">{brl(item.planned)}</td>
+                        <td className="num">{brl(actual)}</td>
+                        <td className={`num ${rest < 0 ? "is-neg" : "is-pos"}`}>{brl(rest)}</td>
+                        <td>
+                          <StatusBadge status={status} />
+                        </td>
+                        <td className="cell-actions">
+                          <IconButton label="Alterar item" onClick={() => openEditItem(item)}>
+                            <FaPen />
+                          </IconButton>
+                        </td>
+                      </AnimatedRow>
+                    );
+                  })}
+                </AnimatedTableBody>
               </table>
               <Pager
                 total={listing.total}
@@ -517,24 +515,23 @@ export default function Projects() {
               </label>
               <label className="field wide">
                 <span>Tipo de movimentação (realizado)</span>
-                <select
+                <SearchableSelect
                   value={itemForm.movementTypeId}
-                  onChange={(e) => {
-                    const movement = activeTypes.find((item) => item.id === e.target.value);
+                  placeholder="Não vincular"
+                  searchPlaceholder="Buscar tipo…"
+                  onChange={(movementTypeId) => {
+                    const movement = activeTypes.find((item) => item.id === movementTypeId);
                     setItemForm({
                       ...itemForm,
-                      movementTypeId: e.target.value,
+                      movementTypeId,
                       category: movement?.name || itemForm.category,
                     });
                   }}
-                >
-                  <option value="">Não vincular</option>
-                  {activeTypes.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name}
-                    </option>
-                  ))}
-                </select>
+                  options={[
+                    { value: "", label: "Não vincular" },
+                    ...activeTypes.map((item) => ({ value: item.id, label: item.name })),
+                  ]}
+                />
               </label>
               <label className="field">
                 <span>Categoria</span>

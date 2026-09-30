@@ -12,6 +12,7 @@ import {
   settlementOf,
   dueDateOf,
   paidDateOf,
+  groupSettlementOf,
   typeLabel,
   yesNo,
 } from "@/shared/lib/format";
@@ -58,11 +59,47 @@ describe("labels", () => {
     expect(settlementLabel("none")).toBe("—");
     expect(dueDateOf({ date: "2026-08-10", movementType: { name: "Mensalidade" } })).toBe("2026-08-10");
     expect(dueDateOf({ date: "2026-08-10", movementType: { name: "Doação" } })).toBe("2026-08-10");
-    expect(paidDateOf({ date: "2026-08-10", movementType: { name: "Doação" } })).toBe("2026-08-10");
-    expect(paidDateOf({ date: "2026-08-10", paidAt: "2026-08-16", movementType: { name: "Mensalidade" } })).toBe(
-      "2026-08-16",
+    expect(paidDateOf({ date: "2026-08-10", paymentStatus: "paid", movementType: { name: "Doação" } })).toBe(
+      "2026-08-10",
     );
-    expect(paidDateOf({ date: "2026-08-10", movementType: { name: "Mensalidade" } })).toBe("");
+    expect(paidDateOf({ date: "2026-08-10", paymentStatus: "pending", movementType: { name: "Doação" } })).toBe("");
+    expect(
+      paidDateOf({
+        date: "2026-08-10",
+        paidAt: "2026-08-16",
+        paymentStatus: "paid",
+        movementType: { name: "Mensalidade" },
+      }),
+    ).toBe("2026-08-16");
+    expect(
+      paidDateOf({
+        date: "2026-08-10",
+        paidAt: "2026-08-16",
+        paymentStatus: "pending",
+        movementType: { name: "Doação" },
+      }),
+    ).toBe("");
+    expect(paidDateOf({ date: "2026-08-10", paymentStatus: "pending", movementType: { name: "Mensalidade" } })).toBe(
+      "",
+    );
+    expect(
+      groupSettlementOf(
+        [
+          { paymentStatus: "paid", date: "2026-08-01" },
+          { paymentStatus: "pending", date: "2026-08-01" },
+        ],
+        "2026-08-10",
+      ),
+    ).toBe("overdue");
+    expect(
+      groupSettlementOf(
+        [
+          { paymentStatus: "paid", date: "2026-08-01" },
+          { paymentStatus: "paid", date: "2026-08-02" },
+        ],
+        "2026-08-10",
+      ),
+    ).toBe("paid");
   });
 });
 

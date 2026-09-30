@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import type { Settings } from "@/domain";
 import PageHeader from "@/shared/ui/PageHeader";
+import { PageGuide, settingsGuide } from "@/features/help";
 import PageLoader from "@/shared/ui/PageLoader";
 import SubmitButton from "@/shared/ui/SubmitButton";
 import { api } from "@/core/http";
@@ -84,6 +85,7 @@ export default function SettingsPage() {
         kicker="Configurações"
         title="Grupo e saldo inicial"
         subtitle="O saldo inicial entra no livro-caixa e no painel. O nome do grupo aparece nos e-mails de cobrança e comprovante. O dia de vencimento vale para toda a grade de mensalidades."
+        actions={<PageGuide guide={settingsGuide} />}
       />
 
       <article className="card" style={{ marginBottom: 16 }}>

@@ -14,6 +14,7 @@ import {
 } from "@/domain";
 import logo from "@/shared/assets/arno_logo.png";
 import PageHeader from "@/shared/ui/PageHeader";
+import { PageGuide, reportsGuide } from "@/features/help";
 import StatCard from "@/shared/ui/StatCard";
 import RecordStamp from "@/shared/ui/RecordStamp";
 import PageLoader from "@/shared/ui/PageLoader";
@@ -22,6 +23,7 @@ import ListingResults from "@/shared/ui/ListingResults";
 import SubmitButton from "@/shared/ui/SubmitButton";
 import FilterBar from "@/shared/ui/FilterBar";
 import Pager from "@/shared/ui/Pager";
+import SearchableSelect from "@/shared/ui/SearchableSelect";
 import { api } from "@/core/http";
 import { useAuth } from "@/features/auth";
 import { useLoadingBar } from "@/shared/feedback/loading";
@@ -53,6 +55,70 @@ const GROUP_BY_LABELS: Record<ReportGroupBy, string> = {
   branch: "Ramo",
   movementType: "Tipo de movimentação",
   nature: "Natureza (fixa/variável)",
+  account: "Conta (titular)",
+};
+
+type ReportModelId = "fiscal" | "byBranch" | "byMovementType" | "byAccount";
+
+const REPORT_MODELS: Record<
+  ReportModelId,
+  {
+    label: string;
+    kicker: string;
+    title: string;
+    subtitle: string;
+    purpose: string;
+    documentTitle: string;
+    csvPrefix: string;
+    defaultGroupBy: ReportGroupBy;
+    showSignatures: boolean;
+  }
+> = {
+  fiscal: {
+    label: "Comissão fiscal",
+    kicker: "Comissão fiscal",
+    title: "Relatório de movimentações",
+    subtitle: "Livro-caixa numerado, com saldo acumulado, para conferência criteriosa da comissão fiscal do grupo.",
+    purpose: "Prestação de contas à comissão fiscal",
+    documentTitle: "Livro-caixa",
+    csvPrefix: "comissao-fiscal-arno",
+    defaultGroupBy: "movementType",
+    showSignatures: true,
+  },
+  byBranch: {
+    label: "Por ramo",
+    kicker: "Relatórios",
+    title: "Relatório por ramo",
+    subtitle:
+      "Síntese por ramo (visão gerencial). Na mensalidade entra só a caixinha (R$ 8,00). Saldos não são o livro-caixa do grupo.",
+    purpose: "Relatório gerencial por ramo",
+    documentTitle: "Por ramo",
+    csvPrefix: "relatorio-ramo-arno",
+    defaultGroupBy: "branch",
+    showSignatures: false,
+  },
+  byMovementType: {
+    label: "Por tipo de movimentação",
+    kicker: "Relatórios",
+    title: "Relatório por tipo de movimentação",
+    subtitle: "Entradas e saídas consolidadas por tipo de conta / movimentação.",
+    purpose: "Relatório gerencial por tipo de movimentação",
+    documentTitle: "Por tipo",
+    csvPrefix: "relatorio-tipo-arno",
+    defaultGroupBy: "movementType",
+    showSignatures: false,
+  },
+  byAccount: {
+    label: "Por conta",
+    kicker: "Relatórios",
+    title: "Relatório por conta",
+    subtitle: "Movimentações agrupadas pelo titular da conta vinculada ao lançamento.",
+    purpose: "Relatório gerencial por conta",
+    documentTitle: "Por conta",
+    csvPrefix: "relatorio-conta-arno",
+    defaultGroupBy: "account",
+    showSignatures: false,
+  },
 };
 
 const ALL_LABEL = "Todos (sem filtro)";
@@ -62,13 +128,14 @@ export default function Reports() {
   const { name: issuerName, user: issuerUser } = useAuth();
   const { start, stop } = useLoadingBar();
   const range = periodRange(year, month);
+  const [modelId, setModelId] = useState<ReportModelId>("fiscal");
   const [from, setFrom] = useState(range.from);
   const [to, setTo] = useState(range.to);
   const [branches, setBranches] = useState<BranchId[]>([]);
   const [types, setTypes] = useState<TxType[]>([]);
   const [natures, setNatures] = useState<TxNature[]>([]);
   const [movementTypeIds, setMovementTypeIds] = useState<string[]>([]);
-  const [groupBy, setGroupBy] = useState<ReportGroupBy>("movementType");
+  const [groupBy, setGroupBy] = useState<ReportGroupBy>(REPORT_MODELS.fiscal.defaultGroupBy);
   const [result, setResult] = useState<Result | null>(null);
   const [busy, setBusy] = useState(false);
   const [movementTypes, setMovementTypes] = useState<MovementType[]>([]);
@@ -77,6 +144,7 @@ export default function Reports() {
   const [ledgerQuery, setLedgerQuery] = useState("");
   const [issuedAt, setIssuedAt] = useState("");
   const [printing, setPrinting] = useState(false);
+  const [filtersDirty, setFiltersDirty] = useState(false);
 
   const summaryRows = useMemo(
     () =>
@@ -153,9 +221,22 @@ export default function Reports() {
   // Na impressão o documento é a prestação de contas completa: sem paginação de tela.
   const summaryPrintRows = printing ? summaryRows : summaryListing.pageRows;
   const ledgerPrintRows = printing ? ledgerRows : ledgerListing.pageRows;
+  const model = REPORT_MODELS[modelId];
 
   function toggle<T extends string>(list: T[], value: T, setter: (v: T[]) => void) {
     setter(list.includes(value) ? list.filter((x) => x !== value) : [...list, value]);
+    if (result) setFiltersDirty(true);
+  }
+
+  function selectModel(next: ReportModelId) {
+    setModelId(next);
+    setGroupBy(REPORT_MODELS[next].defaultGroupBy);
+    setResult(null);
+    setFiltersDirty(false);
+  }
+
+  function markFiltersDirty() {
+    if (result) setFiltersDirty(true);
   }
 
   async function run() {
@@ -177,6 +258,7 @@ export default function Reports() {
       });
       setResult(data);
       setIssuedAt(new Date().toISOString());
+      setFiltersDirty(false);
     } finally {
       setBusy(false);
       stop();
@@ -206,18 +288,19 @@ export default function Reports() {
       Saída: line.expense,
       Saldo: line.balance,
     }));
-    downloadCsv(`comissao-fiscal-arno-${from}-${to}.csv`, toCsv(rows));
+    downloadCsv(`${model.csvPrefix}-${from}-${to}.csv`, toCsv(rows));
   }
 
   return (
     <div className="fiscal-report">
       <div className="no-print">
         <PageHeader
-          kicker="Comissão fiscal"
-          title="Relatório de movimentações"
-          subtitle="Livro-caixa numerado, com saldo acumulado, para conferência criteriosa da comissão fiscal do grupo."
+          kicker={model.kicker}
+          title={model.title}
+          subtitle={model.subtitle}
           actions={
-            <div style={{ display: "flex", gap: 8 }}>
+            <div className="page-head__actions">
+              <PageGuide guide={reportsGuide} />
               <button
                 className="btn btn-outline"
                 type="button"
@@ -236,23 +319,58 @@ export default function Reports() {
 
       <article className="card no-print" style={{ marginBottom: 16 }}>
         <div className="form-grid">
+          <label className="field wide">
+            <span>Tipo de relatório</span>
+            <SearchableSelect
+              value={modelId}
+              onChange={(value) => selectModel(value as ReportModelId)}
+              placeholder="Selecione"
+              options={(Object.keys(REPORT_MODELS) as ReportModelId[]).map((id) => ({
+                value: id,
+                label: REPORT_MODELS[id].label,
+              }))}
+            />
+          </label>
           <label className="field">
             <span>De</span>
-            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+            <input
+              type="date"
+              value={from}
+              onChange={(e) => {
+                setFrom(e.target.value);
+                markFiltersDirty();
+              }}
+            />
           </label>
           <label className="field">
             <span>Até</span>
-            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+            <input
+              type="date"
+              value={to}
+              onChange={(e) => {
+                setTo(e.target.value);
+                markFiltersDirty();
+              }}
+            />
           </label>
           <label className="field">
             <span>Agrupar síntese</span>
-            <select value={groupBy} onChange={(e) => setGroupBy(e.target.value as ReportGroupBy)}>
-              <option value="none">Lançamento a lançamento</option>
-              <option value="month">Mês</option>
-              <option value="branch">Ramo</option>
-              <option value="movementType">Tipo de movimentação</option>
-              <option value="nature">Natureza (fixa/variável)</option>
-            </select>
+            <SearchableSelect
+              value={groupBy}
+              onChange={(value) => {
+                setGroupBy(value as ReportGroupBy);
+                markFiltersDirty();
+              }}
+              placeholder="Selecione"
+              options={[
+                { value: "none", label: "Lançamento a lançamento" },
+                { value: "month", label: "Mês" },
+                { value: "branch", label: "Ramo" },
+                { value: "movementType", label: "Tipo de movimentação" },
+                { value: "nature", label: "Natureza (fixa/variável)" },
+                { value: "account", label: "Conta (titular)" },
+              ]}
+            />
           </label>
           <div className="field wide">
             <span>Ramos</span>
@@ -334,6 +452,15 @@ export default function Reports() {
         </div>
         <p className="muted" style={{ marginTop: 12 }}>
           Sem filtro marcado, o relatório inclui todas as movimentações do período.
+          {groupBy === "branch"
+            ? " Com agrupamento por ramo, a mensalidade entra só com a caixinha (R$ 8) e o saldo é gerencial (não é o caixa do grupo)."
+            : " Com filtro de ramo na comissão fiscal, os valores da mensalidade permanecem integrais."}
+          {filtersDirty ? (
+            <>
+              {" "}
+              <strong>Filtros alterados — clique em Gerar relatório para atualizar.</strong>
+            </>
+          ) : null}
         </p>
       </article>
 
@@ -353,11 +480,11 @@ export default function Reports() {
                     <strong>Grupo Escoteiro Arno Friedrich</strong>
                     <span>Registro 43/RS · Sede no Lindóia Tênis Clube · Porto Alegre</span>
                     <span>Travessa Comandante Gustavo Cramer, 90 · Lindóia</span>
-                    <em>Prestação de contas à comissão fiscal</em>
+                    <em>{model.purpose}</em>
                   </td>
                   <td className="report-letterhead__period">
                     <span>Documento</span>
-                    <strong>Livro-caixa</strong>
+                    <strong>{model.documentTitle}</strong>
                     <span>Período apurado</span>
                     <strong>
                       {formatDate(from)} a {formatDate(to)}
@@ -392,7 +519,7 @@ export default function Reports() {
                 </tr>
                 <tr>
                   <th>Documento</th>
-                  <td>Livro-caixa numerado com saldo acumulado</td>
+                  <td>{model.purpose}</td>
                   <th>Direção</th>
                   <td>{filterSummary.types}</td>
                 </tr>
@@ -409,8 +536,10 @@ export default function Reports() {
                   <td>{filterSummary.movementTypes}</td>
                 </tr>
                 <tr>
+                  <th>Modelo</th>
+                  <td>{model.label}</td>
                   <th>Emitido por</th>
-                  <td colSpan={3}>
+                  <td>
                     {issuerName ?? "Tesouraria"}
                     {issuerUser ? ` (@${issuerUser})` : ""}
                     {issuedAt ? ` · ${formatDateTime(issuedAt)}` : ""}
@@ -656,49 +785,53 @@ export default function Reports() {
               />
             </ListingResults>
             <p className="muted no-print" style={{ marginTop: 16 }}>
-              Documento gerado para conferência da comissão fiscal. Ramos do grupo:{" "}
-              {YOUTH_BRANCHES.map((b) => b.unit).join(", ")} e Grupo.
+              {model.showSignatures ? "Documento gerado para conferência da comissão fiscal." : `${model.purpose}.`}{" "}
+              Ramos do grupo: {YOUTH_BRANCHES.map((b) => b.unit).join(", ")} e Grupo.
             </p>
-            <div className="sign-row no-print">
-              <div>
-                <span>Tesouraria</span>
+            {model.showSignatures ? (
+              <div className="sign-row no-print">
+                <div>
+                  <span>Tesouraria</span>
+                </div>
+                <div>
+                  <span>Comissão fiscal</span>
+                </div>
+                <div>
+                  <span>Diretoria</span>
+                </div>
               </div>
-              <div>
-                <span>Comissão fiscal</span>
-              </div>
-              <div>
-                <span>Diretoria</span>
-              </div>
-            </div>
+            ) : null}
 
             <div className="print-only report-closing">
-              <table className="data report-signatures">
-                <caption>Conferência e assinaturas</caption>
-                <thead>
-                  <tr>
-                    <th>Tesouraria</th>
-                    <th>Comissão fiscal</th>
-                    <th>Diretoria</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr className="report-signatures__space">
-                    <td />
-                    <td />
-                    <td />
-                  </tr>
-                  <tr className="report-signatures__label">
-                    <td>Nome legível e assinatura</td>
-                    <td>Nome legível e assinatura</td>
-                    <td>Nome legível e assinatura</td>
-                  </tr>
-                  <tr className="report-signatures__label">
-                    <td>Data ____/____/________</td>
-                    <td>Data ____/____/________</td>
-                    <td>Data ____/____/________</td>
-                  </tr>
-                </tbody>
-              </table>
+              {model.showSignatures ? (
+                <table className="data report-signatures">
+                  <caption>Conferência e assinaturas</caption>
+                  <thead>
+                    <tr>
+                      <th>Tesouraria</th>
+                      <th>Comissão fiscal</th>
+                      <th>Diretoria</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="report-signatures__space">
+                      <td />
+                      <td />
+                      <td />
+                    </tr>
+                    <tr className="report-signatures__label">
+                      <td>Nome legível e assinatura</td>
+                      <td>Nome legível e assinatura</td>
+                      <td>Nome legível e assinatura</td>
+                    </tr>
+                    <tr className="report-signatures__label">
+                      <td>Data ____/____/________</td>
+                      <td>Data ____/____/________</td>
+                      <td>Data ____/____/________</td>
+                    </tr>
+                  </tbody>
+                </table>
+              ) : null}
 
               <table className="report-footer">
                 <tbody>
@@ -709,7 +842,10 @@ export default function Reports() {
                     <td>
                       Grupo Escoteiro Arno Friedrich · Registro 43/RS · UEB · LTC · Ramos:{" "}
                       {YOUTH_BRANCHES.map((b) => b.unit).join(", ")} e Grupo. Documento emitido pelo sistema de
-                      tesouraria para conferência da comissão fiscal
+                      tesouraria
+                      {model.showSignatures
+                        ? " para conferência da comissão fiscal"
+                        : ` · ${model.purpose.toLowerCase()}`}
                       {issuedAt ? ` em ${formatDateTime(issuedAt)}` : ""}.
                     </td>
                   </tr>

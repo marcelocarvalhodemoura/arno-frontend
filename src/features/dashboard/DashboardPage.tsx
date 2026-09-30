@@ -3,11 +3,13 @@ import { Link } from "react-router-dom";
 import { Bar, BarChart, CartesianGrid, Cell, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { BRANCH_LABELS, type BranchId, type BudgetStatus, type DashboardPayload } from "@/domain";
 import PageHeader from "@/shared/ui/PageHeader";
+import { PageGuide, dashboardGuide } from "@/features/help";
 import StatCard, { Badge } from "@/shared/ui/StatCard";
 import PageLoader from "@/shared/ui/PageLoader";
 import FetchOverlay from "@/shared/ui/FetchOverlay";
 import ListingResults from "@/shared/ui/ListingResults";
 import FilterBar from "@/shared/ui/FilterBar";
+import { PeriodField } from "@/shared/ui/PeriodControl";
 import Pager from "@/shared/ui/Pager";
 import { budgetStatusLabel } from "@/shared/lib/budget";
 import { brl, chartMoney, MONTHS } from "@/shared/lib/format";
@@ -45,7 +47,7 @@ function BudgetMeter({ planned, actual, status }: { planned: number; actual: num
 }
 
 export default function Dashboard() {
-  const { year, month } = usePeriod();
+  const { year, month, setYear, setMonth } = usePeriod();
   const { data, loading, error } = useFetch<DashboardPayload>(`/dashboard?year=${year}&month=${month}`);
   const [query, setQuery] = useState("");
   const branchRows = useMemo(
@@ -95,12 +97,21 @@ export default function Dashboard() {
           title="Indicadores da tesouraria"
           subtitle={`Totais, associados e o caixa do grupo em ${periodLabel}.`}
           actions={
-            <Link className="btn btn-outline" to="/projetos">
-              Abrir previsão
-            </Link>
+            <div className="page-head__actions">
+              <PageGuide guide={dashboardGuide} />
+              <Link className="btn btn-outline" to="/projetos">
+                Abrir previsão
+              </Link>
+            </div>
           }
         />
         {error ? <div className="error">{error}</div> : null}
+
+        <article className="card" style={{ marginBottom: 16 }}>
+          <FilterBar>
+            <PeriodField year={year} month={month} setYear={setYear} setMonth={setMonth} />
+          </FilterBar>
+        </article>
 
         <div className="grid-stats">
           <StatCard
@@ -129,7 +140,7 @@ export default function Dashboard() {
           <StatCard
             title="Filhotes a Grupo"
             value={brl(data.byBranch.reduce((s, r) => s + r.income, 0))}
-            hint="Arrecadação dos ramos do painel"
+            hint="Por ramo: mensalidade só com a caixinha (R$ 8)"
           />
         </div>
 
@@ -277,7 +288,7 @@ export default function Dashboard() {
           <article className="card chart-card">
             <h3 style={{ marginBottom: 12 }}>Arrecadação por ramo</h3>
             <p className="muted" style={{ marginBottom: 12 }}>
-              Filhotes, Lobinho, Escoteiro, Sênior, Pioneiro e Grupo em {periodLabel}.
+              Filhotes a Pioneiro e Grupo em {periodLabel}. Mensalidade: só a caixinha do ramo (R$ 8).
             </p>
             <ResponsiveContainer width="100%" height={240}>
               <BarChart data={branchChart} layout="vertical" margin={{ left: 16 }}>
@@ -353,7 +364,7 @@ export default function Dashboard() {
           </ListingResults>
           <p className="muted" style={{ marginTop: 12 }}>
             * Associados com data de cadastro até {data.to.split("-").reverse().join("/")}, conforme o filtro de mês e
-            ano. Totais por ramo incluem Filhotes, Lobinho, Escoteiro, Sênior, Pioneiro, Flor de Lis e Grupo.
+            ano. Totais por ramo: mensalidade conta só a caixinha (R$ 8); demais lançamentos entram pelo valor integral.
           </p>
         </article>
       </div>

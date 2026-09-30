@@ -2,6 +2,7 @@ import { useMemo, useState, type FormEvent } from "react";
 import type { AppUser, UserRole } from "@/domain";
 import RecordStamp from "@/shared/ui/RecordStamp";
 import PageHeader from "@/shared/ui/PageHeader";
+import { PageGuide, usersGuide } from "@/features/help";
 import Modal from "@/shared/ui/Modal";
 import { Badge } from "@/shared/ui/StatCard";
 import PageLoader from "@/shared/ui/PageLoader";
@@ -12,6 +13,7 @@ import SubmitButton from "@/shared/ui/SubmitButton";
 import FilterBar from "@/shared/ui/FilterBar";
 import Pager from "@/shared/ui/Pager";
 import IconButton from "@/shared/ui/IconButton";
+import SearchableSelect from "@/shared/ui/SearchableSelect";
 import { AnimatePresence } from "framer-motion";
 import { FaPen, FaUserCheck, FaUserSlash } from "react-icons/fa";
 import { api } from "@/core/http";
@@ -19,6 +21,8 @@ import { useToast } from "@/shared/feedback/toast";
 import { matchesQuery, usePagedList } from "@/shared/lib/listing";
 import { formClass, submitAttempt } from "@/shared/lib/form";
 import { useFetch } from "@/shared/hooks/use-fetch";
+import { useFlashId } from "@/shared/hooks/use-flash-id";
+import { AnimatedRow, AnimatedTableBody } from "@/shared/ui/AnimatedTable";
 
 type UserView = AppUser & {
   createdByUser?: { name: string; username?: string } | null;
@@ -47,6 +51,7 @@ function passwordsDiffer(password: string, confirm: string) {
 export default function Users() {
   const toast = useToast();
   const list = useFetch<UserView[]>("/users");
+  const [flashId, flash] = useFlashId();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<UserView | null>(null);
   const [toggling, setToggling] = useState<UserView | null>(null);
@@ -151,9 +156,10 @@ export default function Users() {
           method: "PATCH",
           body: JSON.stringify(payload),
         });
+        flash(editing.id);
         toast.success(form.password ? "Usuário e senha alterados com sucesso." : "Usuário alterado com sucesso.");
       } else {
-        await api("/users", {
+        const created = await api<{ id: string }>("/users", {
           method: "POST",
           body: JSON.stringify({
             username: form.username,
@@ -164,6 +170,7 @@ export default function Users() {
             role: form.role,
           }),
         });
+        flash(created.id);
         toast.success("Usuário cadastrado com sucesso.");
       }
       closeForm();
@@ -189,6 +196,7 @@ export default function Users() {
         }),
       });
       toast.success(toggling.active ? "Usuário desativado com sucesso." : "Usuário reativado com sucesso.");
+      flash(toggling.id);
       closeToggle();
       await list.reload();
     } catch (err) {
@@ -210,9 +218,12 @@ export default function Users() {
         title="Controle de acesso"
         subtitle="Administrador vê o painel e todas as páginas. Tesoureiro lança o caixa, importa CSV, cadastra tipos, taxas, associados e contas."
         actions={
-          <button className="btn btn-primary" type="button" onClick={openCreate}>
-            Novo usuário
-          </button>
+          <div className="page-head__actions">
+            <PageGuide guide={usersGuide} />
+            <button className="btn btn-primary" type="button" onClick={openCreate}>
+              Novo usuário
+            </button>
+          </div>
         }
       />
 
@@ -225,22 +236,29 @@ export default function Users() {
             </label>
             <label className="field">
               <span>Papel</span>
-              <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value as UserRole | "")}>
-                <option value="">Todos</option>
-                <option value="admin">Administrador</option>
-                <option value="tesoureiro">Tesoureiro</option>
-              </select>
+              <SearchableSelect
+                value={roleFilter}
+                onChange={(value) => setRoleFilter(value as UserRole | "")}
+                placeholder="Todos"
+                options={[
+                  { value: "", label: "Todos" },
+                  { value: "admin", label: "Administrador" },
+                  { value: "tesoureiro", label: "Tesoureiro" },
+                ]}
+              />
             </label>
             <label className="field">
               <span>Situação</span>
-              <select
+              <SearchableSelect
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as "active" | "inactive" | "")}
-              >
-                <option value="">Todas</option>
-                <option value="active">Ativo</option>
-                <option value="inactive">Inativo</option>
-              </select>
+                onChange={(value) => setStatusFilter(value as "active" | "inactive" | "")}
+                placeholder="Todas"
+                options={[
+                  { value: "", label: "Todas" },
+                  { value: "active", label: "Ativo" },
+                  { value: "inactive", label: "Inativo" },
+                ]}
+              />
             </label>
           </FilterBar>
           <ListingResults fetching={list.loading} filtering={listing.busy} fetchLabel="Atualizando usuários…">
@@ -254,48 +272,40 @@ export default function Users() {
                   <th className="cell-actions">Ações</th>
                 </tr>
               </thead>
-              <tbody>
-                {listing.pageRows.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="muted">
-                      Nenhum usuário com esses filtros.
+              <AnimatedTableBody emptyColSpan={5} emptyMessage="Nenhum usuário com esses filtros.">
+                {listing.pageRows.map((user, index) => (
+                  <AnimatedRow key={user.id} index={index} flash={flashId === user.id}>
+                    <td>
+                      <strong>{user.name}</strong>
+                      <div className="muted">{user.email}</div>
+                      <RecordStamp
+                        origin={user.origin}
+                        createdAt={user.createdAt}
+                        createdBy={user.createdByUser}
+                        updatedAt={user.updatedAt}
+                        updatedBy={user.updatedByUser}
+                      />
                     </td>
-                  </tr>
-                ) : (
-                  listing.pageRows.map((user) => (
-                    <tr key={user.id}>
-                      <td>
-                        <strong>{user.name}</strong>
-                        <div className="muted">{user.email}</div>
-                        <RecordStamp
-                          origin={user.origin}
-                          createdAt={user.createdAt}
-                          createdBy={user.createdByUser}
-                          updatedAt={user.updatedAt}
-                          updatedBy={user.updatedByUser}
-                        />
-                      </td>
-                      <td>{user.username}</td>
-                      <td>{roleLabel[user.role]}</td>
-                      <td>
-                        <Badge kind={user.active ? "paid" : "inactive"}>{user.active ? "Ativo" : "Inativo"}</Badge>
-                      </td>
-                      <td className="cell-actions">
-                        <IconButton label="Alterar usuário" onClick={() => openEdit(user)}>
-                          <FaPen />
-                        </IconButton>
-                        <IconButton
-                          label={user.active ? "Desativar usuário" : "Reativar usuário"}
-                          tone={user.active ? "danger" : "success"}
-                          onClick={() => openToggle(user)}
-                        >
-                          {user.active ? <FaUserSlash /> : <FaUserCheck />}
-                        </IconButton>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
+                    <td>{user.username}</td>
+                    <td>{roleLabel[user.role]}</td>
+                    <td>
+                      <Badge kind={user.active ? "paid" : "inactive"}>{user.active ? "Ativo" : "Inativo"}</Badge>
+                    </td>
+                    <td className="cell-actions">
+                      <IconButton label="Alterar usuário" onClick={() => openEdit(user)}>
+                        <FaPen />
+                      </IconButton>
+                      <IconButton
+                        label={user.active ? "Desativar usuário" : "Reativar usuário"}
+                        tone={user.active ? "danger" : "success"}
+                        onClick={() => openToggle(user)}
+                      >
+                        {user.active ? <FaUserSlash /> : <FaUserCheck />}
+                      </IconButton>
+                    </td>
+                  </AnimatedRow>
+                ))}
+              </AnimatedTableBody>
             </table>
             <Pager
               total={listing.total}
@@ -347,14 +357,19 @@ export default function Users() {
               </label>
               <label className="field">
                 <span>Papel</span>
-                <select
+                <SearchableSelect
                   required
                   value={form.role}
-                  onChange={(e) => setForm({ ...form, role: e.target.value as UserRole })}
-                >
-                  <option value="tesoureiro">Tesoureiro — caixa, integração, tipos, associados e contas</option>
-                  <option value="admin">Administrador — painel e todas as páginas</option>
-                </select>
+                  placeholder="Selecione"
+                  onChange={(value) => setForm({ ...form, role: value as UserRole })}
+                  options={[
+                    {
+                      value: "tesoureiro",
+                      label: "Tesoureiro — caixa, integração, tipos, associados e contas",
+                    },
+                    { value: "admin", label: "Administrador — painel e todas as páginas" },
+                  ]}
+                />
               </label>
               <label
                 className={`field${attempted && (!editing || changingPassword) && passwordMismatch ? " is-invalid" : ""}`}

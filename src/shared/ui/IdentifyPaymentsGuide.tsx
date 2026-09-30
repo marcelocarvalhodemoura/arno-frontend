@@ -17,10 +17,11 @@ export default function IdentifyPaymentsGuide({ defaultOpen = false }: Props) {
           mesmo dia: o banco traz três linhas, cada uma já classificada no ramo e na rubrica.
         </li>
         <li>
-          <strong>Um PIX com a soma.</strong> Só funciona com um pedido antes (ex.: 60 + 70 + 20 = 150). O crédito de
-          150 entra uma vez no caixa. Ao <strong>Ratear</strong>, vira uma linha em sanfona com o valor original; ao
-          abrir, aparecem as partes (associado, rubrica e valor). Sem pedido, fica crédito sem rubrica até o tesoureiro
-          ratear e, se for de irmãos, indicar o associado em cada parte.
+          <strong>Um PIX com a soma.</strong> Só funciona com um pedido antes (ex.: 60 + 70 + 20 = 150, de mensalidade,
+          produto ou cantina juntos). O crédito de 150 entra uma vez no caixa. Ao <strong>Ratear</strong> — em qualquer
+          tipo de lançamento, não só mensalidade —, vira uma linha em sanfona com o valor original; ao abrir, aparecem
+          as partes (associado, rubrica e valor). Sem pedido, fica crédito sem rubrica até o tesoureiro ratear e, se for
+          o caso, indicar o associado em cada parte.
         </li>
         <li>
           <strong>Cartão de crédito.</strong> O Sicredi quase nunca traz o nome do associado. A maquininha liquida
