@@ -14,6 +14,7 @@ import {
   type TxNature,
   type TxPaymentStatus,
   type TxType,
+  matchesMensalidadeAmount,
 } from "@/domain";
 import PageHeader from "@/shared/ui/PageHeader";
 import Modal from "@/shared/ui/Modal";
@@ -43,11 +44,13 @@ import {
   FaTag,
   FaTrashAlt,
   FaCodeBranch,
+  FaCalendarAlt,
 } from "react-icons/fa";
 import { useToast } from "@/shared/feedback/toast";
 import { api } from "@/core/http";
 import NotaViewer from "@/features/cash-flow/NotaViewer";
 import NotaUploadModal from "@/features/cash-flow/NotaUploadModal";
+import AllocateMensalidadesModal from "@/features/cash-flow/AllocateMensalidadesModal";
 import {
   brl,
   formatDate,
@@ -163,6 +166,7 @@ export default function CashFlow() {
   const [clearNota, setClearNota] = useState(false);
   const [viewingNota, setViewingNota] = useState<TxView | null>(null);
   const [uploadingNota, setUploadingNota] = useState<TxView | null>(null);
+  const [allocateMensalidade, setAllocateMensalidade] = useState<TxView | null>(null);
   const [payConfirm, setPayConfirm] = useState<
     { mode: "single"; tx: TxView } | { mode: "split"; parts: TxView[] } | null
   >(null);
@@ -850,6 +854,13 @@ export default function CashFlow() {
   ) {
     const settlement = settlementOf(t.paymentStatus, t.date);
     const unidentifiedRow = isUnidentifiedName(t.movementType?.name);
+    const canAllocateMensalidades =
+      Boolean(options.allowSplit) &&
+      t.type === "income" &&
+      settlement === "paid" &&
+      !t.splitGroupId &&
+      (unidentifiedRow || isMensalidadeName(t.movementType?.name)) &&
+      !(t.member && matchesMensalidadeAmount(t.member, t.amount));
     const dueDate = dueDateOf(t);
     const paidDate = paidDateOf(t);
     const RowTag = options.nested ? motion.tr : "tr";
@@ -998,6 +1009,11 @@ export default function CashFlow() {
               <FaPaperclip />
             </IconButton>
           )}
+          {canAllocateMensalidades ? (
+            <IconButton label="Baixar mensalidades deste Pix" onClick={() => setAllocateMensalidade(t)}>
+              <FaCalendarAlt />
+            </IconButton>
+          ) : null}
           {options.allowSplit ? (
             <IconButton label="Ratear lançamento" onClick={() => openSplit(t)}>
               <FaCodeBranch />
@@ -1831,6 +1847,23 @@ export default function CashFlow() {
             onClose={() => setUploadingNota(null)}
             onUploaded={() => {
               toast.success("Nota anexada ao lançamento.");
+              void Promise.all([flow.reload(), txs.reload(), yearTxs.reload()]);
+            }}
+          />
+        ) : null}
+        {allocateMensalidade ? (
+          <AllocateMensalidadesModal
+            key={`allocate-${allocateMensalidade.id}`}
+            transactionId={allocateMensalidade.id}
+            creditAmount={allocateMensalidade.amount}
+            creditPaidAt={allocateMensalidade.paidAt ?? allocateMensalidade.date}
+            creditDescription={allocateMensalidade.description}
+            initialMemberId={allocateMensalidade.memberId ?? ""}
+            members={members.data ?? []}
+            onClose={() => setAllocateMensalidade(null)}
+            onDone={(message) => {
+              setAllocateMensalidade(null);
+              toast.success(message);
               void Promise.all([flow.reload(), txs.reload(), yearTxs.reload()]);
             }}
           />

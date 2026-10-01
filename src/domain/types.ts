@@ -547,6 +547,8 @@ export function resolveMensalidadeDueDay(value?: number | null): number {
 export const MENSALIDADE_TABLE = {
   earlyRegular: 60,
   earlyPioneer: 15,
+  /** Pioneiro março/abril após o dia de vencimento. */
+  earlyPioneerLate: 20,
   baseRegular: 75,
   basePioneer: 25,
   /** Diluição de dez/jan/fev — só em maio–novembro (taxa do clube cobre 12 meses). */
@@ -653,7 +655,10 @@ export function onTimeMonthlyFee(profile: MensalidadeProfile, month = 5): number
 
 export function lateMonthlyFee(profile: MensalidadeProfile, month = 5): number {
   if (!paysMensalidade(profile)) return 0;
-  if (isEarlyMensalidadeMonth(month)) return mensalidadeBase(profile.branch, month);
+  if (isEarlyMensalidadeMonth(month)) {
+    if (profile.branch === "pioneiro") return MENSALIDADE_TABLE.earlyPioneerLate;
+    return mensalidadeBase(profile.branch, month);
+  }
   const override = resolveFeeOverride(profile);
   if (override != null) return override;
   const base = mensalidadeBase(profile.branch, month);
@@ -681,7 +686,10 @@ export function expectedMensalidadeAmount(
 ): number {
   if (!paysMensalidade(profile)) return 0;
   const month = monthFromDate(dueDate);
-  if (isEarlyMensalidadeMonth(month)) return mensalidadeBase(profile.branch, month);
+  if (isEarlyMensalidadeMonth(month)) {
+    if (profile.branch === "pioneiro" && dueDate < today) return MENSALIDADE_TABLE.earlyPioneerLate;
+    return mensalidadeBase(profile.branch, month);
+  }
 
   const override = resolveFeeOverride(profile);
   if (override != null) return override;

@@ -55,10 +55,29 @@ export const integrationGuide: PageGuideContent = {
       body: (
         <>
           <p>
-            Aceita modelo da tesouraria, planilha do banco ou PDF do Sicredi. O sistema sugere tipo e associado; você
-            ajusta, inclui ou desmarca linhas e grava. Mensalidade bem identificada marca como pago; linhas amarelas vão
-            ao caixa para classificar depois.
+            Aceita modelo da tesouraria, planilha do banco ou PDF do Sicredi. Linhas do banco entram em geral{" "}
+            <strong>já pagas</strong>. O sistema sugere tipo e associado; você ajusta, inclui ou desmarca e grava.
           </p>
+          <ul>
+            <li>
+              <strong>Antes de gravar</strong> — se for mensalidade, marque tipo <strong>Mensalidade</strong> +
+              associado. O sistema casa com a mensalidade pendente e dá baixa nela (sem duplicar). Se o valor incluir
+              parcela de dívida embutida, use o total que a grade espera para aquele mês.
+            </li>
+            <li>
+              <strong>Vários meses de mensalidade</strong> — grave o crédito e, no Fluxo, use{" "}
+              <strong>Baixar mensalidades deste Pix</strong> para escolher os meses (pontual ou com atraso).
+            </li>
+            <li>
+              <strong>Mensalidade + dívida à parte ou família</strong> — grave o crédito e rateie no Fluxo (uma parte
+              por associado/rubrica).
+            </li>
+            <li>
+              <strong>Linhas amarelas / sem tipo</strong> — vão ao caixa para Identificar. Lá classifique ou rateie
+              (adiantamento, atrasados, família, dívida).
+            </li>
+          </ul>
+          <p className="muted">Classificar na importação evita limpar pendências duplicadas no fluxo de caixa.</p>
         </>
       ),
       media: {
