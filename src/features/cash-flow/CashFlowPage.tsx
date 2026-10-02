@@ -102,11 +102,24 @@ type TxView = Transaction & {
   arrearsMarker?: "embed" | "agreement" | null;
 };
 
+type OpenMensalidade = {
+  transactionId: string;
+  yearMonth: string;
+  year: number;
+  month: number;
+  dueDate: string;
+  status: "pending" | "overdue";
+  onTimeAmount: number;
+  lateAmount: number;
+};
+
 type SplitPartDraft = {
   amount: string;
   movementTypeId: string;
   description: string;
   memberId: string;
+  /** Competência AAAA-MM que a parte quita — obrigatória quando o tipo é Mensalidade. */
+  competence: string;
   /** Se false, o usuário editou a descrição e não regeneramos automaticamente. */
   autoDescription: boolean;
 };
@@ -161,6 +174,25 @@ export default function CashFlow() {
   const [splitting, setSplitting] = useState<TxView | null>(null);
   const [splitEditing, setSplitEditing] = useState(false);
   const [splitParts, setSplitParts] = useState<SplitPartDraft[]>([]);
+  const isMensalidadeTypeId = (typeId: string) =>
+    isMensalidadeName((types.data ?? []).find((item) => item.id === typeId)?.name);
+  const splitHasMensalidade = splitParts.some((part) => isMensalidadeTypeId(part.movementTypeId));
+  /** Mensalidades em aberto por associado (somente leitura — não gera a grade de outros anos). */
+  const [openMensalidades, setOpenMensalidades] = useState<Record<string, OpenMensalidade[] | "loading">>({});
+  const splitMensalidadeMembers = splitParts
+    .filter((part) => part.memberId && isMensalidadeTypeId(part.movementTypeId))
+    .map((part) => part.memberId)
+    .join(",");
+  useEffect(() => {
+    if (!splitMensalidadeMembers) return;
+    for (const memberId of new Set(splitMensalidadeMembers.split(","))) {
+      if (openMensalidades[memberId]) continue;
+      setOpenMensalidades((current) => ({ ...current, [memberId]: "loading" }));
+      void api<OpenMensalidade[]>(`/mensalidades/open?memberId=${encodeURIComponent(memberId)}`)
+        .then((list) => setOpenMensalidades((current) => ({ ...current, [memberId]: list })))
+        .catch(() => setOpenMensalidades((current) => ({ ...current, [memberId]: [] })));
+    }
+  }, [splitMensalidadeMembers, openMensalidades]);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set());
   const [notaFile, setNotaFile] = useState<File | null>(null);
   const [clearNota, setClearNota] = useState(false);
@@ -607,6 +639,7 @@ export default function CashFlow() {
   }
 
   function openSplit(tx: TxView) {
+    setOpenMensalidades({});
     const half = Math.round((tx.amount / 2) * 100) / 100;
     const rest = Math.round((tx.amount - half) * 100) / 100;
     const amounts = [half, rest];
@@ -617,6 +650,7 @@ export default function CashFlow() {
         amount: formatMoney(amount),
         movementTypeId: index === 0 ? tx.movementTypeId : "",
         memberId: index === 0 ? (tx.memberId ?? "") : "",
+        competence: "",
         autoDescription: true,
         description: buildSplitPartDescription({
           baseDescription: tx.description,
@@ -632,6 +666,7 @@ export default function CashFlow() {
   }
 
   function openEditSplit(parts: TxView[]) {
+    setOpenMensalidades({});
     const sorted = [...parts].sort((a, b) => (a.splitIndex ?? 0) - (b.splitIndex ?? 0) || a.id.localeCompare(b.id));
     if (sorted.length < 2) return;
     const primary = sorted.find((item) => item.splitIndex === 1) ?? sorted[0];
@@ -648,6 +683,7 @@ export default function CashFlow() {
         amount: formatMoney(part.amount),
         movementTypeId: part.movementTypeId,
         memberId: part.memberId ?? "",
+        competence: isMensalidadeName(part.movementType?.name) ? part.date.slice(0, 7) : "",
         autoDescription: false,
         description: part.description,
       })),
@@ -659,6 +695,11 @@ export default function CashFlow() {
     return parts.map((part, index) => {
       if (!part.autoDescription) return part;
       const memberName = (members.data ?? []).find((item) => item.id === part.memberId)?.name;
+      if (isMensalidadeTypeId(part.movementTypeId) && part.competence) {
+        const monthName = MONTHS[Number(part.competence.slice(5, 7)) - 1];
+        const label = `Mensalidade ${monthName} ${part.competence.slice(0, 4)}`;
+        return { ...part, description: memberName ? `${label} — ${memberName}` : label };
+      }
       return {
         ...part,
         description: buildSplitPartDescription({
@@ -671,6 +712,28 @@ export default function CashFlow() {
         }),
       };
     });
+  }
+
+  /** Meses em aberto do associado, mais o já escolhido ao alterar o rateio. */
+  function splitCompetenceOptions(memberId: string, current: string) {
+    const list = openMensalidades[memberId];
+    const options = (Array.isArray(list) ? list : []).map((item) => {
+      const amounts =
+        item.onTimeAmount === item.lateAmount
+          ? brl(item.onTimeAmount)
+          : `pontual ${brl(item.onTimeAmount)} · atraso ${brl(item.lateAmount)}`;
+      return {
+        value: item.yearMonth,
+        label: `${MONTHS[item.month - 1]} ${item.year} · ${item.status === "overdue" ? "vencida" : "pendente"} · ${amounts}`,
+      };
+    });
+    if (current && !options.some((item) => item.value === current)) {
+      options.unshift({
+        value: current,
+        label: `${MONTHS[Number(current.slice(5, 7)) - 1]} ${current.slice(0, 4)} · este rateio`,
+      });
+    }
+    return options;
   }
 
   function updateSplitPart(index: number, patch: Partial<SplitPartDraft>) {
@@ -689,9 +752,22 @@ export default function CashFlow() {
       movementTypeId: part.movementTypeId,
       description: part.description.trim(),
       memberId: part.memberId || null,
+      competence: isMensalidadeTypeId(part.movementTypeId) ? part.competence || null : null,
     }));
     if (parts.some((part) => !(part.amount > 0) || !part.movementTypeId || part.description.length < 2)) {
       setError("Preencha valor, tipo e descrição de cada parte.");
+      return;
+    }
+    const missingMonth = parts.findIndex(
+      (part) => isMensalidadeTypeId(part.movementTypeId) && (!part.memberId || !part.competence),
+    );
+    if (missingMonth >= 0) {
+      setError(`Parte ${missingMonth + 1}: informe o associado e o mês que a mensalidade quita.`);
+      return;
+    }
+    const competenceKeys = parts.filter((part) => part.competence).map((part) => `${part.memberId}:${part.competence}`);
+    if (new Set(competenceKeys).size !== competenceKeys.length) {
+      setError("O mesmo mês do mesmo associado aparece em mais de uma parte.");
       return;
     }
     setSaving(true);
@@ -1728,6 +1804,13 @@ export default function CashFlow() {
                 cantina, despesas etc.): escolha a rubrica e, se fizer sentido, o <strong>associado</strong> em cada
                 parte — o fluxo de caixa mantém o valor original e mostra para quem foi o rateio.
               </p>
+              {splitHasMensalidade ? (
+                <p className="muted wide">
+                  Em cada parte do tipo <strong>Mensalidade</strong>, escolha o associado e o{" "}
+                  <strong>mês que ela quita</strong> (adiantamento ou atrasado). É esse mês que recebe a baixa na tela
+                  Mensalidades; a data do PIX fica como data de pagamento.
+                </p>
+              ) : null}
               {splitParts.map((part, index) => (
                 <div key={index} className="wide form-grid split-part">
                   <label className="field">
@@ -1746,7 +1829,7 @@ export default function CashFlow() {
                       value={part.movementTypeId}
                       placeholder="Selecione"
                       searchPlaceholder="Buscar tipo…"
-                      onChange={(movementTypeId) => updateSplitPart(index, { movementTypeId })}
+                      onChange={(movementTypeId) => updateSplitPart(index, { movementTypeId, competence: "" })}
                       options={[
                         { value: "", label: "Selecione" },
                         ...(types.data ?? [])
@@ -1768,7 +1851,7 @@ export default function CashFlow() {
                       value={part.memberId}
                       placeholder="Sem associado"
                       searchPlaceholder="Buscar associado…"
-                      onChange={(memberId) => updateSplitPart(index, { memberId })}
+                      onChange={(memberId) => updateSplitPart(index, { memberId, competence: "" })}
                       options={[
                         { value: "", label: "Sem associado" },
                         ...(members.data ?? [])
@@ -1780,6 +1863,33 @@ export default function CashFlow() {
                       ]}
                     />
                   </label>
+                  {isMensalidadeTypeId(part.movementTypeId) ? (
+                    <label className="field wide">
+                      <span>Mês que esta mensalidade quita</span>
+                      {!part.memberId ? (
+                        <small className="muted">Selecione o associado para ver os meses em aberto.</small>
+                      ) : openMensalidades[part.memberId] === "loading" ? (
+                        <small className="muted">Carregando meses em aberto…</small>
+                      ) : splitCompetenceOptions(part.memberId, part.competence).length === 0 ? (
+                        <small className="error">Este associado não tem mensalidade em aberto.</small>
+                      ) : (
+                        <SearchableSelect
+                          required
+                          value={part.competence}
+                          placeholder="Selecione o mês"
+                          searchPlaceholder="Buscar mês…"
+                          onChange={(competence) => updateSplitPart(index, { competence })}
+                          options={[
+                            { value: "", label: "Selecione o mês" },
+                            ...splitCompetenceOptions(part.memberId, part.competence),
+                          ]}
+                        />
+                      )}
+                      <small className="muted">
+                        A baixa vai para este mês na grade de Mensalidades, independente da data do PIX.
+                      </small>
+                    </label>
+                  ) : null}
                   <label className="field wide">
                     <span>Descrição</span>
                     <input
@@ -1804,6 +1914,7 @@ export default function CashFlow() {
                           amount: "",
                           movementTypeId: "",
                           memberId: "",
+                          competence: "",
                           description: "",
                           autoDescription: true,
                         },

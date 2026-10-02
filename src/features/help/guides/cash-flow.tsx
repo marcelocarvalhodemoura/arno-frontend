@@ -103,6 +103,12 @@ export const cashFlowGuide: PageGuideContent = {
               baixe a mensalidade e a linha do acordo separadamente).
             </li>
             <li>
+              <strong>Mês de cada parte Mensalidade</strong> — no <strong>Ratear</strong>, toda parte do tipo
+              Mensalidade exige o associado e o <strong>mês que ela quita</strong> (a lista mostra só as cobranças
+              pendentes e vencidas que já existem para o associado). É esse mês que fica pago na tela Mensalidades, não
+              o mês do PIX; a pendência daquele mês é substituída.
+            </li>
+            <li>
               <strong>Família no mesmo PIX</strong> — rateie uma parte por associado (irmão), tipo Mensalidade, ou use a
               baixa em lote na tela Mensalidades se ainda forem lançamentos pendentes.
             </li>
@@ -198,7 +204,7 @@ export const cashFlowGuide: PageGuideContent = {
             </li>
             <li>
               <strong>Ratear</strong> — parte um crédito em várias rubricas/associados (família, mensalidade + dívida à
-              parte); a soma deve bater com o total.
+              parte); a soma deve bater com o total. Partes do tipo Mensalidade pedem o mês que quitam.
             </li>
             <li>
               <strong>Excluir</strong> — remove o lançamento (conforme permissão).

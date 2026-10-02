@@ -6,7 +6,15 @@ import SearchableSelect from "@/shared/ui/SearchableSelect";
 import { api } from "@/core/http";
 import { brl, MONTHS, todayISO } from "@/shared/lib/format";
 import { useFetch } from "@/shared/hooks/use-fetch";
-import type { MensalidadeReport } from "@/domain";
+
+type OpenMensalidade = {
+  yearMonth: string;
+  year: number;
+  month: number;
+  status: "pending" | "overdue";
+  onTimeAmount: number;
+  lateAmount: number;
+};
 
 type AllocatePreview = {
   memberId: string;
@@ -46,7 +54,6 @@ export default function AllocateMensalidadesModal({
   onDone,
 }: Props) {
   const [memberId, setMemberId] = useState(initialMemberId);
-  const [year, setYear] = useState(() => Number((creditPaidAt || todayISO()).slice(0, 4)) || new Date().getFullYear());
   const [timing, setTiming] = useState<"on_time" | "late">("late");
   const [paidAt, setPaidAt] = useState((creditPaidAt || todayISO()).slice(0, 10));
   const [selected, setSelected] = useState<string[]>([]);
@@ -54,27 +61,17 @@ export default function AllocateMensalidadesModal({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const report = useFetch<MensalidadeReport>(memberId ? `/mensalidades?year=${year}` : null);
-
-  const openMonths = useMemo(() => {
-    const row = report.data?.rows.find((item) => item.memberId === memberId);
-    if (!row) return [];
-    return row.cells
-      .filter((cell) => cell.status === "pending" || cell.status === "overdue")
-      .map((cell) => ({
-        yearMonth: `${year}-${String(cell.month).padStart(2, "0")}`,
-        month: cell.month,
-        status: cell.status,
-        onTimeAmount: cell.onTimeAmount,
-        lateAmount: cell.lateAmount,
-      }));
-  }, [report.data, memberId, year]);
+  // Somente leitura: lista as cobranças em aberto que já existem, de qualquer ano.
+  const open = useFetch<OpenMensalidade[]>(
+    memberId ? `/mensalidades/open?memberId=${encodeURIComponent(memberId)}` : null,
+  );
+  const openMonths = useMemo(() => open.data ?? [], [open.data]);
 
   useEffect(() => {
     setSelected([]);
     setPreview(null);
     setError(null);
-  }, [memberId, year]);
+  }, [memberId]);
 
   useEffect(() => {
     if (selected.length < 2 || !memberId) {
@@ -159,22 +156,10 @@ export default function AllocateMensalidadesModal({
           ]}
         />
       </label>
-      <div className="form-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <label className="field">
-          <span>Ano da grade</span>
-          <input
-            type="number"
-            min={2020}
-            max={2100}
-            value={year}
-            onChange={(e) => setYear(Number(e.target.value) || year)}
-          />
-        </label>
-        <label className="field">
-          <span>Data de pagamento (Pix)</span>
-          <input type="date" value={paidAt} onChange={(e) => setPaidAt(e.target.value)} />
-        </label>
-      </div>
+      <label className="field">
+        <span>Data de pagamento (Pix)</span>
+        <input type="date" value={paidAt} onChange={(e) => setPaidAt(e.target.value)} />
+      </label>
       <fieldset className="field wide" style={{ border: "none", padding: 0, margin: "12px 0 0" }}>
         <legend className="muted" style={{ marginBottom: 8 }}>
           Valor de cada mês
@@ -199,10 +184,10 @@ export default function AllocateMensalidadesModal({
         </legend>
         {!memberId ? (
           <p className="muted">Selecione o associado.</p>
-        ) : report.loading ? (
+        ) : open.loading ? (
           <p className="muted">Carregando meses em aberto…</p>
         ) : openMonths.length === 0 ? (
-          <p className="muted">Nenhuma mensalidade pendente ou vencida em {year}.</p>
+          <p className="muted">Nenhuma mensalidade pendente ou vencida para este associado.</p>
         ) : (
           openMonths.map((item) => {
             const checked = selected.includes(item.yearMonth);
@@ -215,7 +200,8 @@ export default function AllocateMensalidadesModal({
                   onChange={(e) => toggleMonth(item.yearMonth, e.target.checked)}
                 />
                 <span>
-                  {MONTHS[item.month - 1]} {year} · {item.status === "overdue" ? "vencida" : "pendente"} · {brl(amount)}
+                  {MONTHS[item.month - 1]} {item.year} · {item.status === "overdue" ? "vencida" : "pendente"} ·{" "}
+                  {brl(amount)}
                 </span>
               </label>
             );
