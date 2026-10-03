@@ -46,6 +46,27 @@ export const membersGuide: PageGuideContent = {
       },
     },
     {
+      id: "profile",
+      title: "Ficha do associado",
+      body: (
+        <>
+          <p>
+            O ícone de cartão na linha abre a <strong>ficha</strong>: valor em aberto, acordo de dívida, quanto pagou no
+            ano, a grade de mensalidades e os últimos lançamentos. É a tela para atender uma família.
+          </p>
+          <p className="muted">
+            Para jovens (filhotes a pioneiros), <strong>Ver na grade</strong> abre Mensalidades já filtrada pelo nome.
+            Escotistas, dirigentes e Clube da Flor de Lis não têm mensalidade, então o botão não aparece.
+          </p>
+        </>
+      ),
+      media: {
+        src: "/help/members-ficha.png",
+        alt: "Ficha com em aberto, acordo, pago no ano, grade e últimos lançamentos",
+        caption: "Tudo de um associado num lugar.",
+      },
+    },
+    {
       id: "accounts",
       title: "Contas de pagamento",
       body: (

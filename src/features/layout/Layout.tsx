@@ -1,9 +1,11 @@
+import { hasRole } from "@/domain";
 import { useEffect, useId, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { matchPath, NavLink, Outlet, useLocation } from "react-router-dom";
 import { FaAngleDown, FaAngleLeft, FaAngleRight, FaSignOutAlt } from "react-icons/fa";
 import logo from "@/shared/assets/arno_logo.png";
 import { useAuth } from "@/features/auth";
+import { api } from "@/core/http";
 import { NAV_SECTIONS, type NavSection } from "@/features/layout/nav-links";
 import { duration, ease, pageTransition, pageVariants, pageVariantsReduced } from "@/shared/lib/motion";
 import type { Period } from "@/shared/hooks/use-period";
@@ -53,11 +55,16 @@ function persistOpenSections(open: Record<string, boolean>) {
 
 export default function Layout({ year, month, setYear, setMonth }: Period) {
   const location = useLocation();
+  // Auditoria de uso: registra cada tela aberta (só a primeira parte do caminho, sem dados).
+  const screen = `/${location.pathname.split("/")[1] ?? ""}`;
+  useEffect(() => {
+    void api("/audit/page", { method: "POST", body: JSON.stringify({ path: screen }) }).catch(() => undefined);
+  }, [screen]);
   const reduceMotion = useReducedMotion();
   const { user, name, role, logout } = useAuth();
   const sections = NAV_SECTIONS.map((section) => ({
     ...section,
-    items: section.items.filter((link) => role && link.roles.includes(role)),
+    items: section.items.filter((link) => hasRole(role, link.roles)),
   })).filter((section) => section.items.length > 0);
   const activeSectionId = sections.find((section) => sectionMatchesPath(section, location.pathname))?.id;
   const sectionKey = sections.map((section) => section.id).join("|");
@@ -68,7 +75,7 @@ export default function Layout({ year, month, setYear, setMonth }: Period) {
       sections.find((section) => sectionMatchesPath(section, location.pathname))?.id,
     ),
   );
-  const roleLabel = role === "admin" ? "Administrador" : "Tesoureiro";
+  const roleLabel = role === "superadmin" ? "Super admin" : role === "admin" ? "Administrador" : "Tesoureiro";
   const navId = useId();
   const animatePanels = !collapsed && !reduceMotion;
 

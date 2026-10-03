@@ -29,6 +29,27 @@ export const mensalidadesGuide: PageGuideContent = {
       },
     },
     {
+      id: "generate-year",
+      title: "Gerar as cobranças do ano",
+      body: (
+        <>
+          <p>
+            Trocar o ano na grade só mostra; não cria nada. Num ano que ainda não tem cobranças, aparece o aviso com a
+            quantidade de mensalidades que seriam criadas.
+          </p>
+          <p>
+            Quando o ano estiver confirmado, clique em <strong>Gerar cobranças</strong> e confirme. As mensalidades
+            pendentes (março a novembro) dos associados ativos passam a aparecer no Fluxo de caixa e nas cobranças.
+          </p>
+        </>
+      ),
+      media: {
+        src: "/help/mensalidades-gerar-ano.png",
+        alt: "Ano sem cobranças com o botão Gerar cobranças e a confirmação",
+        caption: "Gerar é uma ação explícita, com confirmação.",
+      },
+    },
+    {
       id: "due-and-filters",
       title: "Vencimento e filtros",
       body: (

@@ -1,3 +1,4 @@
+import { hasRole } from "@/domain";
 import type { ReactNode } from "react";
 import { Navigate } from "react-router-dom";
 import type { UserRole } from "@/domain";
@@ -13,7 +14,7 @@ export function RequireSession({ children }: { children: ReactNode }) {
 
 export function RequireRole({ children, roles }: { children: ReactNode; roles: UserRole[] }) {
   const { role } = useAuth();
-  if (roles && role && !roles.includes(role)) {
+  if (roles && role && !hasRole(role, roles)) {
     return <Navigate to={role === "tesoureiro" ? "/fluxo" : "/"} replace />;
   }
   return children;

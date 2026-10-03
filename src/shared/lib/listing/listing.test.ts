@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LISTING_BUSY_MS, matchesQuery, PAGE_SIZES, paginate } from "@/shared/lib/listing";
+import { matchesQuery, PAGE_SIZES, paginate } from "@/shared/lib/listing";
 
 describe("paginate", () => {
   const items = Array.from({ length: 23 }, (_, i) => i + 1);
@@ -32,12 +32,6 @@ describe("paginate", () => {
   it("supports the listing page sizes", () => {
     expect(PAGE_SIZES).toEqual([10, 15, 20, 50]);
     expect(paginate(items, 1, 20).pageRows).toHaveLength(20);
-  });
-});
-
-describe("listing busy", () => {
-  it("keeps a visible filter delay", () => {
-    expect(LISTING_BUSY_MS).toBeGreaterThanOrEqual(280);
   });
 });
 

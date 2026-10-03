@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import NextSteps from "@/features/dashboard/NextSteps";
 import { Link } from "react-router-dom";
 import { Bar, BarChart, CartesianGrid, Cell, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { BRANCH_LABELS, type BranchId, type BudgetStatus, type DashboardPayload } from "@/domain";
@@ -9,7 +10,6 @@ import PageLoader from "@/shared/ui/PageLoader";
 import FetchOverlay from "@/shared/ui/FetchOverlay";
 import ListingResults from "@/shared/ui/ListingResults";
 import FilterBar from "@/shared/ui/FilterBar";
-import { PeriodField } from "@/shared/ui/PeriodControl";
 import Pager from "@/shared/ui/Pager";
 import { budgetStatusLabel } from "@/shared/lib/budget";
 import { brl, chartMoney, MONTHS } from "@/shared/lib/format";
@@ -47,7 +47,7 @@ function BudgetMeter({ planned, actual, status }: { planned: number; actual: num
 }
 
 export default function Dashboard() {
-  const { year, month, setYear, setMonth } = usePeriod();
+  const { year, month } = usePeriod();
   const { data, loading, error } = useFetch<DashboardPayload>(`/dashboard?year=${year}&month=${month}`);
   const [query, setQuery] = useState("");
   const branchRows = useMemo(
@@ -105,37 +105,27 @@ export default function Dashboard() {
             </div>
           }
         />
+        <NextSteps />
         {error ? <div className="error">{error}</div> : null}
 
-        <article className="card" style={{ marginBottom: 16 }}>
-          <FilterBar>
-            <PeriodField year={year} month={month} setYear={setYear} setMonth={setMonth} />
-          </FilterBar>
-        </article>
+        <div className="grid-stats" style={{ marginTop: 16 }}>
+          <StatCard title="Saldo inicial" value={brl(data.opening)} hint="Antes do período filtrado" />
+          <StatCard title="Entradas" value={brl(data.income)} tone="pos" hint={`Arrecadação de ${periodLabel}`} />
+          <StatCard title="Saídas" value={brl(data.expense)} tone="neg" hint={`Pagamentos de ${periodLabel}`} />
+          <StatCard title="Saldo atual" value={brl(data.current)} hint="Após entradas e saídas do período" />
+        </div>
 
-        <div className="grid-stats">
+        <div className="grid-stats grid-stats--3" style={{ marginTop: 16 }}>
           <StatCard
-            title="Arrecadação no período"
-            value={brl(data.income)}
-            tone="pos"
-            hint={`Entradas de ${periodLabel}`}
+            title="Resultado"
+            value={brl(data.income - data.expense)}
+            tone={data.income - data.expense >= 0 ? "pos" : "neg"}
+            hint="Entradas menos saídas no período"
           />
           <StatCard
             title="Associados"
             value={String(data.members)}
             hint={`${data.activeMembers} ativos · cadastro até ${data.to.split("-").reverse().join("/")}`}
-          />
-          <StatCard title="Saldo inicial" value={brl(data.opening)} hint="Antes do período filtrado" />
-          <StatCard title="Saldo atual" value={brl(data.current)} hint="Após entradas e saídas do período" />
-        </div>
-
-        <div className="grid-stats" style={{ marginTop: 16 }}>
-          <StatCard title="Entradas no período" value={brl(data.income)} tone="pos" />
-          <StatCard title="Saídas no período" value={brl(data.expense)} tone="neg" />
-          <StatCard
-            title="Resultado"
-            value={brl(data.income - data.expense)}
-            tone={data.income - data.expense >= 0 ? "pos" : "neg"}
           />
           <StatCard
             title="Filhotes a Grupo"
@@ -186,7 +176,7 @@ export default function Dashboard() {
               Ainda não há previsão cadastrada para {year}. Cadastre em Previsão de gastos.
             </p>
           ) : (
-            <div className="split-2" style={{ marginTop: 16 }}>
+            <div className="budget-tables">
               <div>
                 <h4 style={{ marginTop: 0 }}>Por ramo</h4>
                 <div className="table-wrap">
@@ -313,7 +303,7 @@ export default function Dashboard() {
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Ramo…" />
             </label>
           </FilterBar>
-          <ListingResults fetching={loading} filtering={listing.busy} fetchLabel="Atualizando painel…">
+          <ListingResults fetching={loading} fetchLabel="Atualizando painel…">
             <div className="table-wrap">
               <table className="data">
                 <thead>

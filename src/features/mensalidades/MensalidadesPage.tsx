@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   BRANCH_LABELS,
   YOUTH_BRANCHES,
@@ -40,9 +40,13 @@ export default function Mensalidades() {
   const toast = useToast();
   const { year, month, setYear, setMonth } = usePeriod();
   const list = useFetch<MensalidadeReport>(`/mensalidades?year=${year}`);
+  const [confirmGenerate, setConfirmGenerate] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const channels = useFetch<{ email: boolean; whatsapp: boolean }>("/notify/status");
   const [flashId, flash] = useFlashId();
-  const [query, setQuery] = useState("");
+  const [searchParams] = useSearchParams();
+  // A ficha do associado abre a grade já filtrada pelo nome (?busca=).
+  const [query, setQuery] = useState(() => searchParams.get("busca") ?? "");
   const [branch, setBranch] = useState<YouthBranchId | "">("");
   const [statusFilter, setStatusFilter] = useState<MemberStatus | "">("active");
   const [roleFilter, setRoleFilter] = useState<MemberRole | "">("");
@@ -337,6 +341,81 @@ export default function Mensalidades() {
     return <PageLoader label="Carregando mensalidades…" />;
   }
 
+  async function generateYear() {
+    setGenerating(true);
+    try {
+      const result = await api<{ created: number }>("/mensalidades/generate", {
+        method: "POST",
+        body: JSON.stringify({ year }),
+      });
+      toast.success(`${result.created} mensalidades de ${year} geradas.`);
+      setConfirmGenerate(false);
+      await list.reload();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Não foi possível gerar as cobranças");
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  // Ano sem cobranças: só mostra o aviso. Ver a grade não cria nada; gerar é uma ação explícita.
+  if (list.data.generated === false) {
+    return (
+      <div>
+        <PageHeader
+          kicker="Mensalidades"
+          title={`Ano escoteiro ${year}`}
+          subtitle="As cobranças deste ano ainda não foram geradas."
+          actions={
+            <div className="page-head__actions">
+              <PageGuide guide={mensalidadesGuide} />
+            </div>
+          }
+        />
+        <article className="card">
+          <FilterBar>
+            <PeriodField year={year} month={month} setYear={setYear} setMonth={setMonth} />
+          </FilterBar>
+          <div className="empty-year">
+            <h3>As cobranças de {year} ainda não foram geradas</h3>
+            <p className="muted">
+              Olhar a grade não cria nada. Gere quando o ano estiver confirmado: serão{" "}
+              <strong>{list.data.toGenerate ?? 0} mensalidades</strong> pendentes (março a novembro) dos associados
+              ativos, que passam a aparecer no Fluxo de caixa e nas cobranças.
+            </p>
+            {confirmGenerate ? (
+              <div className="empty-year__confirm">
+                <span>
+                  Gerar {list.data.toGenerate ?? 0} mensalidades pendentes de {year}?
+                </span>
+                <button type="button" className="btn btn-ghost" onClick={() => setConfirmGenerate(false)}>
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={generating}
+                  onClick={() => void generateYear()}
+                >
+                  {generating ? "Gerando…" : `Sim, gerar ${year}`}
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={!list.data.toGenerate}
+                onClick={() => setConfirmGenerate(true)}
+              >
+                Gerar cobranças de {year}
+              </button>
+            )}
+          </div>
+        </article>
+      </div>
+    );
+  }
+
   return (
     <div>
       <PageHeader
@@ -451,7 +530,7 @@ export default function Mensalidades() {
               />
             </label>
           </FilterBar>
-          <ListingResults fetching={list.loading} filtering={listing.busy} fetchLabel="Atualizando mensalidades…">
+          <ListingResults fetching={list.loading} fetchLabel="Atualizando mensalidades…">
             <div className="table-wrap">
               <table className="data fees-grid">
                 <thead>

@@ -12,6 +12,17 @@ export function budgetStatus(planned: number, actual: number, paceMonth?: number
   return "ok";
 }
 
+/**
+ * Ritmo do calendário para o status da previsão.
+ * Ano encerrado: 12 meses · ano corrente: mês de hoje · ano futuro: sem ritmo (só ok/over).
+ */
+export function budgetPaceMonth(year: number, today = new Date()): number | null {
+  const current = today.getFullYear();
+  if (year < current) return 12;
+  if (year > current) return null;
+  return today.getMonth() + 1;
+}
+
 export function budgetStatusLabel(status: BudgetStatus): string {
   if (status === "over") return "Estourou";
   if (status === "watch") return "Atenção";

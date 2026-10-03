@@ -23,8 +23,19 @@ export type GuardianRelationship =
   | "Irmão"
   | "Responsável legal"
   | "Outro";
-export type ReportGroupBy = "none" | "month" | "branch" | "movementType" | "nature" | "account";
-export type UserRole = "admin" | "tesoureiro";
+export type ReportGroupBy = "none" | "month" | "branch" | "movementType" | "nature" | "account" | "member" | "method";
+/** superadmin: tudo do admin + auditoria e gestão de outros super admins. */
+export type UserRole = "superadmin" | "admin" | "tesoureiro";
+
+/** O super admin passa em tudo que o admin passa. */
+export function hasRole(role: UserRole | null | undefined, allowed: UserRole[]): boolean {
+  if (!role) return false;
+  return allowed.includes(role) || role === "superadmin";
+}
+
+export function isAdminRole(role: UserRole | null | undefined): boolean {
+  return role === "admin" || role === "superadmin";
+}
 export type RecordOrigin = "manual" | "integration" | "sicredi";
 export type ImportSource = "csv" | "pdf" | "sicredi";
 export type BankProvider = "sicredi";
@@ -429,7 +440,10 @@ export interface MensalidadeReport {
     overdue: number;
     openAmount: number;
     paidAmount: number;
-  };
+  }; /** false: o ano ainda não tem cobranças; a grade só mostra e não gera nada. */
+  generated?: boolean;
+  /** Quantas cobranças seriam criadas ao gerar o ano. */
+  toGenerate?: number;
 }
 
 export interface DatabaseShape {
@@ -724,6 +738,8 @@ export function matchesMensalidadeAmount(
   profile: MensalidadeProfile & { monthlyFee?: number },
   amount: number,
 ): boolean {
+  // Clube da Flor de Lis, escotistas e dirigentes não pagam: nenhum valor é "mensalidade" deles.
+  if (!paysMensalidade(profile)) return false;
   if (profile.monthlyFee !== undefined && amountsNear(amount, profile.monthlyFee)) return true;
   return isOfficialMensalidadeAmount(profile, amount);
 }

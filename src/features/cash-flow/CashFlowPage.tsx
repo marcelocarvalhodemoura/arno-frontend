@@ -8,13 +8,17 @@ import {
   type Member,
   type MemberAccount,
   type MemberGuardian,
+  type MonthClosingRow,
   type MovementType,
   type PaymentMethod,
+  type Settings,
   type Transaction,
   type TxNature,
   type TxPaymentStatus,
   type TxType,
+  isAdminRole,
   matchesMensalidadeAmount,
+  paysMensalidade,
 } from "@/domain";
 import PageHeader from "@/shared/ui/PageHeader";
 import Modal from "@/shared/ui/Modal";
@@ -45,12 +49,30 @@ import {
   FaTrashAlt,
   FaCodeBranch,
   FaCalendarAlt,
+  FaHistory,
+  FaLock,
+  FaTrashRestore,
 } from "react-icons/fa";
 import { useToast } from "@/shared/feedback/toast";
 import { api } from "@/core/http";
 import NotaViewer from "@/features/cash-flow/NotaViewer";
 import NotaUploadModal from "@/features/cash-flow/NotaUploadModal";
 import AllocateMensalidadesModal from "@/features/cash-flow/AllocateMensalidadesModal";
+import TrashModal from "@/features/cash-flow/review/TrashModal";
+import HistoryModal from "@/features/cash-flow/review/HistoryModal";
+import DuplicatesModal from "@/features/cash-flow/review/DuplicatesModal";
+import ReconciliationModal from "@/features/cash-flow/review/ReconciliationModal";
+import MonthClosingBar from "@/features/cash-flow/review/MonthClosingBar";
+import NextSteps from "@/features/dashboard/NextSteps";
+import { useAuth } from "@/features/auth";
+import {
+  autoMensalidadeDescription,
+  checkLaunch,
+  mensalidadeTableHint,
+  competenceDate,
+  launchKindOf,
+  launchSummary,
+} from "@/features/cash-flow/launch-form";
 import {
   brl,
   formatDate,
@@ -158,6 +180,26 @@ export default function CashFlow() {
   const [identifyIndex, setIdentifyIndex] = useState(0);
   const pendingIdentify = useRef(readIdentifyFlag());
   const [editing, setEditing] = useState<TxView | null>(null);
+  /** Vencimento editado à mão: deixa de acompanhar a data de pagamento. */
+  const [dateTouched, setDateTouched] = useState(false);
+  /** Descrição da mensalidade gerada pelo mês e associado até a pessoa editar. */
+  const [descAuto, setDescAuto] = useState(true);
+  /** Quem lança confirmou os avisos do resumo. */
+  const [warningsAck, setWarningsAck] = useState(false);
+  const settings = useFetch<Settings>("/settings");
+  const { role } = useAuth();
+  const isAdmin = isAdminRole(role);
+  const closings = useFetch<MonthClosingRow[]>("/month-closings");
+  const closedMonths = useMemo(() => new Set((closings.data ?? []).map((item) => item.yearMonth)), [closings.data]);
+  const [showTrash, setShowTrash] = useState(false);
+  const [showDuplicates, setShowDuplicates] = useState(false);
+  const [showReconcile, setShowReconcile] = useState(false);
+  const [historyOf, setHistoryOf] = useState<TxView | null>(null);
+  /** Muda depois de uma revisão para recarregar os Próximos passos. */
+  const [reviewKey, setReviewKey] = useState(0);
+  /** Pago com vencimento num mês fechado: só leitura até o admin reabrir. */
+  const isLockedTx = (tx: Pick<TxView, "paymentStatus" | "date">) =>
+    tx.paymentStatus !== "pending" && closedMonths.has(tx.date.slice(0, 7));
   const [form, setForm] = useState(() => blankForm(year, month));
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -176,7 +218,8 @@ export default function CashFlow() {
   const [splitParts, setSplitParts] = useState<SplitPartDraft[]>([]);
   const isMensalidadeTypeId = (typeId: string) =>
     isMensalidadeName((types.data ?? []).find((item) => item.id === typeId)?.name);
-  const splitHasMensalidade = splitParts.some((part) => isMensalidadeTypeId(part.movementTypeId));
+  const splitSum = Math.round(splitParts.reduce((sum, part) => sum + (parseMoney(part.amount) || 0), 0) * 100) / 100;
+  const splitDiff = splitting ? Math.round((splitting.amount - splitSum) * 100) / 100 : 0;
   /** Mensalidades em aberto por associado (somente leitura — não gera a grade de outros anos). */
   const [openMensalidades, setOpenMensalidades] = useState<Record<string, OpenMensalidade[] | "loading">>({});
   const splitMensalidadeMembers = splitParts
@@ -404,18 +447,22 @@ export default function CashFlow() {
     });
   }
 
+  const launchExisting = useMemo(() => {
+    const byId = new Map<string, TxView>();
+    for (const tx of [...(yearTxs.data ?? []), ...(txs.data ?? [])]) byId.set(tx.id, tx);
+    return [...byId.values()];
+  }, [yearTxs.data, txs.data]);
+
   const selectedMember = (members.data ?? []).find((m) => m.id === form.memberId);
   const selectedGuardians = selectedMember?.role === "jovem" ? (selectedMember.guardians ?? []) : [];
   const allowedTypes = useMemo(() => {
-    const list = (types.data ?? []).filter(
-      (item) => item.active && (item.direction === "both" || item.direction === form.type),
-    );
+    const list = (types.data ?? []).filter((item) => item.active && !isUnidentifiedName(item.name));
     const current = (types.data ?? []).find((item) => item.id === form.movementTypeId);
     if (current && !list.some((item) => item.id === current.id)) {
       return [current, ...list];
     }
     return list;
-  }, [types.data, form.type, form.movementTypeId]);
+  }, [types.data, form.movementTypeId]);
 
   function suggestProjectId(movementTypeId: string, branch: BranchId) {
     if (!movementTypeId) return "";
@@ -428,7 +475,129 @@ export default function CashFlow() {
   }
 
   const selectedMovement = (types.data ?? []).find((item) => item.id === form.movementTypeId);
-  const feeLaunch = isMensalidadeName(selectedMovement?.name);
+  const launchKind = launchKindOf(selectedMovement?.name);
+  const dueDay = settings.data?.mensalidadeDueDay ?? 10;
+  const launchDescription =
+    launchKind === "mensalidade" && descAuto
+      ? autoMensalidadeDescription(form.date, selectedMember?.name)
+      : form.description;
+  const launchCheck = checkLaunch({
+    kind: launchKind,
+    movementTypeId: form.movementTypeId,
+    typeChosen: Boolean(selectedMovement) && !isUnidentifiedName(selectedMovement?.name),
+    amount: parseMoney(form.amount) || 0,
+    description: launchDescription,
+    member: selectedMember ?? null,
+    paymentStatus: form.paymentStatus,
+    date: form.date,
+    paidAt: form.paidAt,
+    today: todayISO(),
+    editingId: editing?.id,
+    existing: launchExisting,
+  });
+  const launchNeedsAck = launchCheck.errors.length === 0 && launchCheck.warnings.length > 0;
+
+  /** Escolher o tipo define entrada/saída (quando o tipo só tem uma direção), natureza, ramo e previsão. */
+  function onLaunchTypeChange(movementTypeId: string) {
+    const next = (types.data ?? []).find((item) => item.id === movementTypeId);
+    const branch = next?.branch && next.branch !== "grupo" ? next.branch : form.branch;
+    const kind = launchKindOf(next?.name);
+    const type = next && next.direction !== "both" ? next.direction : form.type;
+    const date =
+      kind === "mensalidade" && form.date ? competenceDate(form.date.slice(0, 7), dueDay) : form.date || form.paidAt;
+    setForm({
+      ...form,
+      movementTypeId,
+      type,
+      nature: next ? natureForTypeName(next.name) : form.nature,
+      date,
+      paidAt: form.paymentStatus === "paid" ? form.paidAt || form.date : form.paidAt,
+      branch,
+      projectId: form.projectId || suggestProjectId(movementTypeId, branch),
+    });
+    setWarningsAck(false);
+  }
+
+  function onLaunchPaidChange(paid: boolean) {
+    setForm({
+      ...form,
+      paymentStatus: paid ? "paid" : "pending",
+      paidAt: paid ? form.paidAt || (launchKind === "mensalidade" ? todayISO() : form.date || todayISO()) : "",
+    });
+  }
+
+  /** Pago e vencimento iguais por padrão fora da mensalidade, até alguém mudar o vencimento. */
+  function onLaunchPaidAtChange(paidAt: string) {
+    const followDate = launchKind !== "mensalidade" && !dateTouched;
+    setForm({ ...form, paidAt, date: followDate && paidAt ? paidAt : form.date });
+  }
+
+  function renderLaunchMember(required: boolean) {
+    return (
+      <label className="field">
+        <span>{required ? "Associado" : "Associado (opcional)"}</span>
+        <SearchableSelect
+          required={required}
+          value={form.memberId}
+          onChange={(memberId) => {
+            onMemberChange(memberId);
+            setWarningsAck(false);
+          }}
+          placeholder={required ? "Escolha o associado" : "Sem associado"}
+          searchPlaceholder="Buscar associado…"
+          options={[
+            { value: "", label: required ? "Escolha o associado" : "Sem associado" },
+            ...(members.data ?? []).map((m) => ({
+              value: m.id,
+              label: `${m.name} · ${BRANCH_LABELS[m.branch]}`,
+            })),
+          ]}
+        />
+      </label>
+    );
+  }
+
+  function renderLaunchNota() {
+    return (
+      <label className="field wide">
+        <span>{form.type === "expense" ? "Comprovante ou nota (PDF ou imagem)" : "Comprovante (PDF ou imagem)"}</span>
+        <input
+          type="file"
+          accept="application/pdf,image/jpeg,image/png,image/webp,image/gif"
+          onChange={(e) => {
+            setNotaFile(e.target.files?.[0] ?? null);
+            setClearNota(false);
+          }}
+        />
+        {notaFile ? (
+          <small className="muted">
+            <FaFileAlt aria-hidden /> {notaFile.name}
+          </small>
+        ) : editing && (editing.hasNota || editing.notaKey) && !clearNota ? (
+          <small className="nota-attached">
+            <FaFileAlt aria-hidden /> {editing.notaFileName || "Nota anexada"}
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setViewingNota(editing)}>
+              Ver ampliada
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => {
+                setClearNota(true);
+                setNotaFile(null);
+              }}
+            >
+              Remover
+            </button>
+          </small>
+        ) : clearNota ? (
+          <small className="muted">A nota será removida ao salvar.</small>
+        ) : (
+          <small className="muted">Opcional. Até 10 MB.</small>
+        )}
+      </label>
+    );
+  }
 
   function onMemberChange(memberId: string) {
     const member = (members.data ?? []).find((m) => m.id === memberId);
@@ -453,6 +622,9 @@ export default function CashFlow() {
     setClearNota(false);
     setError(null);
     setAttempted(false);
+    setDateTouched(false);
+    setDescAuto(true);
+    setWarningsAck(false);
   }
 
   function openEdit(
@@ -489,6 +661,9 @@ export default function CashFlow() {
       memberGuardianId: tx.memberGuardianId ?? "",
       projectId: tx.projectId ?? "",
     });
+    setDateTouched(tx.paymentStatus === "pending" || stamp !== (tx.paidAt?.slice(0, 10) ?? stamp));
+    setDescAuto(false);
+    setWarningsAck(false);
     setNotaFile(null);
     setClearNota(false);
     setError(null);
@@ -526,6 +701,9 @@ export default function CashFlow() {
     setIdentifyIndex(0);
     setEditing(null);
     setForm(blankForm(year, month));
+    setDateTouched(false);
+    setDescAuto(true);
+    setWarningsAck(false);
     setNotaFile(null);
     setClearNota(false);
     setError(null);
@@ -558,22 +736,24 @@ export default function CashFlow() {
   async function onSave(e: FormEvent<HTMLFormElement>) {
     if (!submitAttempt(e, setAttempted)) return;
     setError(null);
-    const amount = parseMoney(form.amount);
-    if (!Number.isFinite(amount) || amount <= 0) return;
-    const dueDate = form.date;
-    const paymentDate = form.paidAt.trim();
-    if (!dueDate) return;
-    if (form.paymentStatus === "paid" && !paymentDate) {
-      setError(feeLaunch ? "Informe a data de pagamento da mensalidade" : "Informe a data de pagamento");
+    if (launchCheck.errors.length) {
+      setError(launchCheck.errors[0]!);
       return;
     }
+    if (launchCheck.warnings.length && !warningsAck) {
+      setError("Confira os avisos do resumo e marque “Conferi” para salvar.");
+      return;
+    }
+    const amount = parseMoney(form.amount);
+    const dueDate = form.date;
+    const paymentDate = form.paidAt.trim();
     setSaving(true);
     const payload = {
       date: dueDate,
       type: form.type,
       nature: form.nature,
       movementTypeId: form.movementTypeId,
-      description: form.description,
+      description: launchDescription.trim(),
       branch: form.branch,
       method: form.method,
       paymentStatus: form.paymentStatus,
@@ -631,10 +811,39 @@ export default function CashFlow() {
     }
   }
 
+  function reloadAll() {
+    setReviewKey((key) => key + 1);
+    return Promise.all([flow.reload(), txs.reload(), yearTxs.reload(), closings.reload()]);
+  }
+
+  /** Excluir vai para a lixeira; o aviso oferece Desfazer por alguns segundos. */
+  function offerUndo(message: string, trashIds: string[]) {
+    toast.success(message, {
+      action: {
+        label: "Desfazer",
+        onClick: () => {
+          void (async () => {
+            try {
+              for (const trashId of trashIds) await api(`/trash/${trashId}/restore`, { method: "POST" });
+              toast.success("Exclusão desfeita.");
+            } catch (err) {
+              toast.error(err instanceof Error ? err.message : "Não foi possível desfazer");
+            }
+            await reloadAll();
+          })();
+        },
+      },
+    });
+  }
+
   async function remove(id: string) {
-    if (!confirm("Excluir este lançamento?")) return;
-    await api(`/transactions/${id}`, { method: "DELETE" });
-    toast.success("Lançamento excluído com sucesso.");
+    try {
+      const result = await api<{ trashId: string }>(`/transactions/${id}`, { method: "DELETE" });
+      offerUndo("Lançamento enviado para a lixeira.", [result.trashId]);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Não foi possível excluir");
+      return;
+    }
     await Promise.all([flow.reload(), txs.reload(), yearTxs.reload()]);
   }
 
@@ -789,12 +998,17 @@ export default function CashFlow() {
   }
 
   async function removeSplitGroup(parts: TxView[]) {
-    if (!confirm(`Excluir este rateio e suas ${parts.length} partes?`)) return;
-    for (const part of parts) {
-      await api(`/transactions/${part.id}`, { method: "DELETE" });
+    const trashIds: string[] = [];
+    try {
+      for (const part of parts) {
+        const result = await api<{ trashId: string }>(`/transactions/${part.id}`, { method: "DELETE" });
+        trashIds.push(result.trashId);
+      }
+      offerUndo(`Rateio com ${parts.length} partes enviado para a lixeira.`, trashIds);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Não foi possível excluir o rateio");
     }
-    toast.success("Rateio excluído.");
-    await Promise.all([flow.reload(), txs.reload(), yearTxs.reload()]);
+    await reloadAll();
   }
 
   function askMarkAsPaid(target: { mode: "single"; tx: TxView } | { mode: "split"; parts: TxView[] }) {
@@ -936,7 +1150,7 @@ export default function CashFlow() {
       settlement === "paid" &&
       !t.splitGroupId &&
       (unidentifiedRow || isMensalidadeName(t.movementType?.name)) &&
-      !(t.member && matchesMensalidadeAmount(t.member, t.amount));
+      !(t.member && (!paysMensalidade(t.member) || matchesMensalidadeAmount(t.member, t.amount)));
     const dueDate = dueDateOf(t);
     const paidDate = paidDateOf(t);
     const RowTag = options.nested ? motion.tr : "tr";
@@ -1055,49 +1269,60 @@ export default function CashFlow() {
           {t.type === "income" ? "+" : "−"} {brl(t.amount)}
         </td>
         <td className="cell-actions">
-          {unidentifiedRow ? (
-            <IconButton label="Identificar tipo" onClick={() => startIdentifyQueue(unidentified, t.id)}>
-              <FaTag />
-            </IconButton>
-          ) : null}
-          {settlement === "paid" ? (
-            <IconButton label="Marcar como pendente" onClick={() => void setPaymentStatus(t, "pending")}>
-              <FaClock />
-            </IconButton>
-          ) : (
-            <IconButton
-              label="Marcar como pago"
-              tone="success"
-              onClick={() => askMarkAsPaid({ mode: "single", tx: t })}
-            >
-              <FaCheck />
-            </IconButton>
-          )}
-          <IconButton label="Alterar lançamento" onClick={() => openEdit(t)}>
-            <FaPen />
+          <IconButton label="Histórico de alterações" onClick={() => setHistoryOf(t)}>
+            <FaHistory />
           </IconButton>
-          {t.hasNota || t.notaKey ? (
-            <IconButton label="Ver nota ampliada" onClick={() => setViewingNota(t)}>
-              <FaExpand />
-            </IconButton>
+          {isLockedTx(t) ? (
+            <span className="locked-pill" title="Mês fechado: só o admin reabre">
+              <FaLock aria-hidden /> mês fechado
+            </span>
           ) : (
-            <IconButton label="Anexar nota de conciliação" onClick={() => setUploadingNota(t)}>
-              <FaPaperclip />
-            </IconButton>
+            <>
+              {unidentifiedRow ? (
+                <IconButton label="Identificar tipo" onClick={() => startIdentifyQueue(unidentified, t.id)}>
+                  <FaTag />
+                </IconButton>
+              ) : null}
+              {settlement === "paid" ? (
+                <IconButton label="Marcar como pendente" onClick={() => void setPaymentStatus(t, "pending")}>
+                  <FaClock />
+                </IconButton>
+              ) : (
+                <IconButton
+                  label="Marcar como pago"
+                  tone="success"
+                  onClick={() => askMarkAsPaid({ mode: "single", tx: t })}
+                >
+                  <FaCheck />
+                </IconButton>
+              )}
+              <IconButton label="Alterar lançamento" onClick={() => openEdit(t)}>
+                <FaPen />
+              </IconButton>
+              {t.hasNota || t.notaKey ? (
+                <IconButton label="Ver nota ampliada" onClick={() => setViewingNota(t)}>
+                  <FaExpand />
+                </IconButton>
+              ) : (
+                <IconButton label="Anexar nota de conciliação" onClick={() => setUploadingNota(t)}>
+                  <FaPaperclip />
+                </IconButton>
+              )}
+              {canAllocateMensalidades ? (
+                <IconButton label="Baixar mensalidades deste Pix" onClick={() => setAllocateMensalidade(t)}>
+                  <FaCalendarAlt />
+                </IconButton>
+              ) : null}
+              {options.allowSplit ? (
+                <IconButton label="Ratear lançamento" onClick={() => openSplit(t)}>
+                  <FaCodeBranch />
+                </IconButton>
+              ) : null}
+              <IconButton label="Excluir lançamento" tone="danger" onClick={() => void remove(t.id)}>
+                <FaTrashAlt />
+              </IconButton>
+            </>
           )}
-          {canAllocateMensalidades ? (
-            <IconButton label="Baixar mensalidades deste Pix" onClick={() => setAllocateMensalidade(t)}>
-              <FaCalendarAlt />
-            </IconButton>
-          ) : null}
-          {options.allowSplit ? (
-            <IconButton label="Ratear lançamento" onClick={() => openSplit(t)}>
-              <FaCodeBranch />
-            </IconButton>
-          ) : null}
-          <IconButton label="Excluir lançamento" tone="danger" onClick={() => void remove(t.id)}>
-            <FaTrashAlt />
-          </IconButton>
         </td>
       </RowTag>
     );
@@ -1122,6 +1347,9 @@ export default function CashFlow() {
         actions={
           <div className="page-head__actions">
             <PageGuide guide={cashFlowGuide} />
+            <button className="btn btn-ghost" type="button" onClick={() => setShowTrash(true)}>
+              <FaTrashRestore aria-hidden /> Lixeira
+            </button>
             <button className="btn btn-primary" type="button" onClick={openCreate}>
               Lançamento manual
             </button>
@@ -1136,6 +1364,42 @@ export default function CashFlow() {
           <StatCard title="Saídas no período" value={brl(periodExpense)} tone="neg" />
           <StatCard title="Saldo atual" value={brl(data.closing)} />
         </div>
+
+        <NextSteps
+          refreshKey={reviewKey}
+          hide={["unidentified"]}
+          actions={{
+            suggestions: () => setShowReconcile(true),
+            duplicates: () => setShowDuplicates(true),
+            closing: () => {
+              const now = new Date();
+              const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+              setYear(prev.getFullYear());
+              setMonth(prev.getMonth() + 1);
+            },
+          }}
+        />
+
+        {month ? (
+          <MonthClosingBar
+            key={`${year}-${month}-${closings.data?.length ?? 0}`}
+            year={year}
+            month={month}
+            isAdmin={isAdmin}
+            closing={(closings.data ?? []).find(
+              (item) => item.yearMonth === `${year}-${String(month).padStart(2, "0")}`,
+            )}
+            pendingReview={{
+              unidentified: unidentified.filter((item) =>
+                item.date.startsWith(`${year}-${String(month).padStart(2, "0")}`),
+              ).length,
+            }}
+            onChanged={(message) => {
+              toast.success(message);
+              void reloadAll();
+            }}
+          />
+        ) : null}
 
         {unidentified.length ? (
           <article className="card identify-banner">
@@ -1264,7 +1528,7 @@ export default function CashFlow() {
             </p>
           ) : null}
 
-          <ListingResults fetching={refreshing} filtering={listing.busy} fetchLabel="Atualizando lançamentos…">
+          <ListingResults fetching={refreshing} fetchLabel="Atualizando lançamentos…">
             <div className="table-wrap">
               <table className="data">
                 <thead>
@@ -1419,32 +1683,40 @@ export default function CashFlow() {
                               >
                                 <FaChevronDown className={`tx-split-chevron${expanded ? " is-open" : ""}`} />
                               </IconButton>
-                              {allPaid ? (
-                                <IconButton
-                                  label="Marcar partes como pendentes"
-                                  onClick={() => void setSplitGroupPaymentStatus(parts, "pending")}
-                                >
-                                  <FaClock />
-                                </IconButton>
+                              {parts.some(isLockedTx) ? (
+                                <span className="locked-pill" title="Mês fechado: só o admin reabre">
+                                  <FaLock aria-hidden /> mês fechado
+                                </span>
                               ) : (
-                                <IconButton
-                                  label="Marcar partes como pagas"
-                                  tone="success"
-                                  onClick={() => askMarkAsPaid({ mode: "split", parts })}
-                                >
-                                  <FaCheck />
-                                </IconButton>
+                                <>
+                                  {allPaid ? (
+                                    <IconButton
+                                      label="Marcar partes como pendentes"
+                                      onClick={() => void setSplitGroupPaymentStatus(parts, "pending")}
+                                    >
+                                      <FaClock />
+                                    </IconButton>
+                                  ) : (
+                                    <IconButton
+                                      label="Marcar partes como pagas"
+                                      tone="success"
+                                      onClick={() => askMarkAsPaid({ mode: "split", parts })}
+                                    >
+                                      <FaCheck />
+                                    </IconButton>
+                                  )}
+                                  <IconButton label="Alterar rateio" onClick={() => openEditSplit(parts)}>
+                                    <FaCodeBranch />
+                                  </IconButton>
+                                  <IconButton
+                                    label="Excluir rateio"
+                                    tone="danger"
+                                    onClick={() => void removeSplitGroup(parts)}
+                                  >
+                                    <FaTrashAlt />
+                                  </IconButton>
+                                </>
                               )}
-                              <IconButton label="Alterar rateio" onClick={() => openEditSplit(parts)}>
-                                <FaCodeBranch />
-                              </IconButton>
-                              <IconButton
-                                label="Excluir rateio"
-                                tone="danger"
-                                onClick={() => void removeSplitGroup(parts)}
-                              >
-                                <FaTrashAlt />
-                              </IconButton>
                             </td>
                           </tr>
                         );
@@ -1496,281 +1768,331 @@ export default function CashFlow() {
             }
             onClose={closeForm}
           >
-            <form onSubmit={onSave} className={formClass("form-grid", attempted)} noValidate>
+            <form onSubmit={onSave} className={formClass("form-grid launch-form", attempted)} noValidate>
               {error ? <div className="error wide">{error}</div> : null}
-              <label className="field">
-                <span>Vencimento</span>
-                <input
-                  required
-                  type="date"
-                  value={form.date}
-                  onChange={(e) => setForm({ ...form, date: e.target.value })}
-                />
-              </label>
-              <label className="field">
-                <span>Data de pagamento</span>
-                <input
-                  required={form.paymentStatus === "paid"}
-                  type="date"
-                  value={form.paidAt}
-                  disabled={form.paymentStatus === "pending"}
-                  onChange={(e) => setForm({ ...form, paidAt: e.target.value })}
-                />
-                {form.paymentStatus === "pending" ? (
-                  <small className="muted">Disponível ao marcar a situação como pago/conciliado.</small>
-                ) : null}
-              </label>
-              <label className="field">
-                <span>Situação</span>
-                <SearchableSelect
-                  required
-                  value={form.paymentStatus}
-                  placeholder="Selecione"
-                  onChange={(value) => {
-                    const paymentStatus = value as TxPaymentStatus;
-                    setForm({
-                      ...form,
-                      paymentStatus,
-                      paidAt: paymentStatus === "pending" ? "" : form.paidAt || form.date || todayISO(),
-                    });
-                  }}
-                  options={[
-                    { value: "paid", label: "Pago" },
-                    { value: "pending", label: "Pendente" },
-                  ]}
-                />
-              </label>
-              <label className="field">
-                <span>Entrada ou saída</span>
-                <SearchableSelect
-                  required
-                  value={form.type}
-                  placeholder="Selecione"
-                  onChange={(value) => setForm({ ...form, type: value as TxType, movementTypeId: "" })}
-                  options={[
-                    { value: "income", label: "Entrada" },
-                    { value: "expense", label: "Saída" },
-                  ]}
-                />
-              </label>
-              <div className="field">
-                <span>
-                  Conta fixa ou variável
-                  <abbr className="req" title="Obrigatório">
-                    *
-                  </abbr>
-                </span>
-                <div className="flag-row">
-                  <button
-                    type="button"
-                    className={`flag ${form.nature === "fixed" ? "is-on" : ""}`}
-                    onClick={() => setForm({ ...form, nature: "fixed" })}
-                  >
-                    Fixa
-                  </button>
-                  <button
-                    type="button"
-                    className={`flag ${form.nature === "variable" ? "is-on" : ""}`}
-                    onClick={() => setForm({ ...form, nature: "variable" })}
-                  >
-                    Variável
-                  </button>
-                </div>
-              </div>
-              <label className="field">
-                <span>Tipo de movimentação</span>
+              <label className="field wide">
+                <span>O que é este lançamento?</span>
                 <SearchableSelect
                   required
                   value={form.movementTypeId}
-                  placeholder="Selecione"
+                  placeholder="Escolha o tipo"
                   searchPlaceholder="Buscar tipo…"
-                  onChange={(movementTypeId) => {
-                    const next = (types.data ?? []).find((item) => item.id === movementTypeId);
-                    const branch = next?.branch || form.branch;
-                    setForm({
-                      ...form,
-                      movementTypeId,
-                      nature: next ? natureForTypeName(next.name) : form.nature,
-                      date: form.date || form.paidAt,
-                      paidAt: form.paymentStatus === "paid" ? form.paidAt || form.date : form.paidAt,
-                      branch,
-                      projectId: form.projectId || suggestProjectId(movementTypeId, branch),
-                    });
-                  }}
+                  onChange={onLaunchTypeChange}
                   options={[
-                    { value: "", label: "Selecione" },
+                    { value: "", label: "Escolha o tipo" },
                     ...allowedTypes.map((t) => ({
                       value: t.id,
-                      label: `${t.name}${t.branch && t.branch !== "grupo" ? ` · ${BRANCH_LABELS[t.branch]}` : ""}${
-                        !t.active ? " (inativo)" : ""
-                      }${t.direction !== "both" && t.direction !== form.type ? " · direção diferente" : ""}`,
+                      label: `${t.name}${t.direction === "income" ? " · entrada" : t.direction === "expense" ? " · saída" : ""}${
+                        t.branch && t.branch !== "grupo" ? ` · ${BRANCH_LABELS[t.branch]}` : ""
+                      }${!t.active ? " (inativo)" : ""}`,
                     })),
                   ]}
                 />
+                <small className="muted">
+                  {!selectedMovement || isUnidentifiedName(selectedMovement.name)
+                    ? "Mensalidade, evento, despesa… O tipo define os campos abaixo."
+                    : selectedMovement.direction === "both"
+                      ? "Este tipo aceita entrada e saída: escolha abaixo."
+                      : `O sistema já sabe: ${typeLabel(form.type).toLowerCase()} · conta ${natureLabel(form.nature).toLowerCase()}.`}
+                </small>
               </label>
-              <label className="field wide">
-                <span>Descrição</span>
-                <input
-                  value={form.description}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  required
-                  minLength={2}
-                />
-              </label>
+              {selectedMovement?.direction === "both" ? (
+                <div className="field wide">
+                  <span>Entrada ou saída?</span>
+                  <div className="flag-row">
+                    <button
+                      type="button"
+                      className={`flag ${form.type === "income" ? "is-on" : ""}`}
+                      onClick={() => setForm({ ...form, type: "income" })}
+                    >
+                      Entrada (recebemos)
+                    </button>
+                    <button
+                      type="button"
+                      className={`flag ${form.type === "expense" ? "is-on" : ""}`}
+                      onClick={() => setForm({ ...form, type: "expense" })}
+                    >
+                      Saída (pagamos)
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+              {launchKind !== "other" ? renderLaunchMember(true) : null}
+              {launchKind === "mensalidade" ? (
+                <label className="field">
+                  <span>Mês que a mensalidade quita</span>
+                  <input
+                    required
+                    type="month"
+                    value={form.date.slice(0, 7)}
+                    onChange={(e) => setForm({ ...form, date: competenceDate(e.target.value, dueDay) })}
+                  />
+                  <small className="muted">É este mês que fica pago na grade, não o mês do Pix.</small>
+                </label>
+              ) : (
+                <label className="field wide">
+                  <span>Descrição</span>
+                  <input
+                    value={form.description}
+                    onChange={(e) => setForm({ ...form, description: e.target.value })}
+                    placeholder={form.type === "expense" ? "Ex.: gás do acampamento" : "Ex.: cantina do sábado"}
+                    required
+                    minLength={2}
+                  />
+                </label>
+              )}
               <label className={`field${attempted && !(parseMoney(form.amount) > 0) ? " is-invalid" : ""}`}>
                 <span>Valor (R$)</span>
                 <input
                   inputMode="numeric"
                   value={form.amount}
-                  onChange={(e) => setForm({ ...form, amount: maskMoney(e.target.value) })}
+                  onChange={(e) => {
+                    setForm({ ...form, amount: maskMoney(e.target.value) });
+                    setWarningsAck(false);
+                  }}
                   placeholder="0,00"
                   required
                 />
+                {launchKind === "mensalidade" && mensalidadeTableHint(selectedMember, form.date) ? (
+                  <small className="muted">{mensalidadeTableHint(selectedMember, form.date)}</small>
+                ) : null}
               </label>
-              <label className="field">
-                <span>Ramo</span>
-                <SearchableSelect
-                  required
-                  value={form.branch}
-                  placeholder="Selecione"
-                  onChange={(value) => {
-                    const branch = value as BranchId;
-                    setForm({
-                      ...form,
-                      branch,
-                      projectId: form.projectId || suggestProjectId(form.movementTypeId, branch),
-                    });
-                  }}
-                  options={ALL_BRANCHES.map((id) => ({ value: id, label: BRANCH_LABELS[id] }))}
-                />
-              </label>
-              <label className="field">
-                <span>Associado (opcional)</span>
-                <SearchableSelect
-                  value={form.memberId}
-                  onChange={onMemberChange}
-                  placeholder="Sem associado"
-                  searchPlaceholder="Buscar associado…"
-                  options={[
-                    { value: "", label: "Sem associado" },
-                    ...(members.data ?? []).map((m) => ({
-                      value: m.id,
-                      label: `${m.name} · ${BRANCH_LABELS[m.branch]}`,
-                    })),
-                  ]}
-                />
-              </label>
-              {selectedMember?.role === "jovem" ? (
+              <div className="field">
+                <span>Já foi pago?</span>
+                <div className="flag-row">
+                  <button
+                    type="button"
+                    className={`flag ${form.paymentStatus === "paid" ? "is-on" : ""}`}
+                    onClick={() => onLaunchPaidChange(true)}
+                  >
+                    Sim
+                  </button>
+                  <button
+                    type="button"
+                    className={`flag ${form.paymentStatus === "pending" ? "is-on" : ""}`}
+                    onClick={() => onLaunchPaidChange(false)}
+                  >
+                    Não, vai vencer
+                  </button>
+                </div>
+              </div>
+              {form.paymentStatus === "paid" ? (
                 <label className="field">
-                  <span>Responsável</span>
-                  <SearchableSelect
-                    value={form.memberGuardianId}
-                    onChange={(memberGuardianId) => setForm({ ...form, memberGuardianId })}
-                    placeholder="Não informar"
-                    searchPlaceholder="Buscar responsável…"
-                    options={[
-                      { value: "", label: "Não informar" },
-                      ...selectedGuardians.map((guardian) => ({
-                        value: guardian.id,
-                        label: `${guardian.name} · ${guardian.relationship}`,
-                      })),
-                    ]}
+                  <span>Quando foi pago?</span>
+                  <input
+                    required
+                    type="date"
+                    value={form.paidAt}
+                    onChange={(e) => onLaunchPaidAtChange(e.target.value)}
                   />
-                  {selectedGuardians.length === 0 ? (
-                    <span className="muted">Cadastre o responsável no associado para vincular neste lançamento.</span>
-                  ) : null}
+                </label>
+              ) : launchKind !== "mensalidade" ? (
+                <label className="field">
+                  <span>Quando vence?</span>
+                  <input
+                    required
+                    type="date"
+                    value={form.date}
+                    onChange={(e) => {
+                      setDateTouched(true);
+                      setForm({ ...form, date: e.target.value });
+                    }}
+                  />
                 </label>
               ) : null}
-              <label className="field">
-                <span>Conta do pagamento</span>
-                <SearchableSelect
-                  value={form.memberAccountId}
-                  onChange={(memberAccountId) => setForm({ ...form, memberAccountId })}
-                  placeholder="Não informar"
-                  searchPlaceholder="Buscar conta…"
-                  disabled={!selectedMember}
-                  options={[
-                    { value: "", label: "Não informar" },
-                    ...(selectedMember?.accounts ?? []).map((a) => ({
-                      value: a.id,
-                      label: `${a.holderName} · ${a.relationship}`,
-                    })),
-                  ]}
-                />
-              </label>
-              <label className="field">
-                <span>Previsão de gastos</span>
-                <SearchableSelect
-                  value={form.projectId}
-                  onChange={(projectId) => setForm({ ...form, projectId })}
-                  placeholder="Nenhuma"
-                  searchPlaceholder="Buscar previsão…"
-                  options={[
-                    { value: "", label: "Nenhuma" },
-                    ...(projects.data ?? []).map((p) => ({
-                      value: p.id,
-                      label: `${p.name}${p.branch ? ` · ${BRANCH_LABELS[p.branch]}` : ""}`,
-                    })),
-                  ]}
-                />
-              </label>
-              <label className="field">
-                <span>Meio</span>
-                <SearchableSelect
-                  required
-                  value={form.method}
-                  placeholder="Selecione"
-                  onChange={(value) => setForm({ ...form, method: value as PaymentMethod })}
-                  options={[
-                    { value: "pix", label: "Pix" },
-                    { value: "transfer", label: "Transferência" },
-                    { value: "cash", label: "Dinheiro" },
-                    { value: "card", label: "Cartão" },
-                    { value: "other", label: "Outro" },
-                  ]}
-                />
-              </label>
-              <label className="field wide">
-                <span>Nota (PDF ou imagem)</span>
-                <input
-                  type="file"
-                  accept="application/pdf,image/jpeg,image/png,image/webp,image/gif"
-                  onChange={(e) => {
-                    setNotaFile(e.target.files?.[0] ?? null);
-                    setClearNota(false);
-                  }}
-                />
-                {notaFile ? (
-                  <small className="muted">
-                    <FaFileAlt aria-hidden /> {notaFile.name}
-                  </small>
-                ) : editing && (editing.hasNota || editing.notaKey) && !clearNota ? (
-                  <small className="nota-attached">
-                    <FaFileAlt aria-hidden /> {editing.notaFileName || "Nota anexada"}
-                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => setViewingNota(editing)}>
-                      Ver ampliada
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm"
-                      onClick={() => {
-                        setClearNota(true);
-                        setNotaFile(null);
+              {form.type === "expense" ? renderLaunchNota() : null}
+
+              <details className="launch-more wide">
+                <summary>
+                  Mais detalhes{" "}
+                  <span className="muted">
+                    · {BRANCH_LABELS[form.branch]} · {methodLabel(form.method)}
+                    {form.projectId ? " · com previsão" : ""}
+                  </span>
+                </summary>
+                <div className="form-grid">
+                  {launchKind === "other" ? renderLaunchMember(false) : null}
+                  {launchKind === "mensalidade" ? (
+                    <label className="field wide">
+                      <span>Descrição</span>
+                      <input
+                        value={launchDescription}
+                        onChange={(e) => {
+                          setDescAuto(false);
+                          setForm({ ...form, description: e.target.value });
+                        }}
+                      />
+                      {descAuto ? <small className="muted">Gerada pelo mês e associado.</small> : null}
+                    </label>
+                  ) : null}
+                  {launchKind !== "mensalidade" && form.paymentStatus === "paid" ? (
+                    <label className="field">
+                      <span>Vencimento</span>
+                      <input
+                        type="date"
+                        value={form.date}
+                        onChange={(e) => {
+                          setDateTouched(true);
+                          setForm({ ...form, date: e.target.value });
+                        }}
+                      />
+                      <small className="muted">Igual à data de pagamento, a não ser que você mude.</small>
+                    </label>
+                  ) : null}
+                  {selectedMember?.role === "jovem" ? (
+                    <label className="field">
+                      <span>Responsável</span>
+                      <SearchableSelect
+                        value={form.memberGuardianId}
+                        onChange={(memberGuardianId) => setForm({ ...form, memberGuardianId })}
+                        placeholder="Não informar"
+                        searchPlaceholder="Buscar responsável…"
+                        options={[
+                          { value: "", label: "Não informar" },
+                          ...selectedGuardians.map((guardian) => ({
+                            value: guardian.id,
+                            label: `${guardian.name} · ${guardian.relationship}`,
+                          })),
+                        ]}
+                      />
+                      {selectedGuardians.length === 0 ? (
+                        <small className="muted">Cadastre o responsável no associado para vincular aqui.</small>
+                      ) : null}
+                    </label>
+                  ) : null}
+                  {selectedMember ? (
+                    <label className="field">
+                      <span>Conta do pagamento</span>
+                      <SearchableSelect
+                        value={form.memberAccountId}
+                        onChange={(memberAccountId) => setForm({ ...form, memberAccountId })}
+                        placeholder="Não informar"
+                        searchPlaceholder="Buscar conta…"
+                        options={[
+                          { value: "", label: "Não informar" },
+                          ...(selectedMember.accounts ?? []).map((a) => ({
+                            value: a.id,
+                            label: `${a.holderName} · ${a.relationship}`,
+                          })),
+                        ]}
+                      />
+                    </label>
+                  ) : null}
+                  <label className="field">
+                    <span>Ramo</span>
+                    <SearchableSelect
+                      required
+                      value={form.branch}
+                      placeholder="Selecione"
+                      onChange={(value) => {
+                        const branch = value as BranchId;
+                        setForm({
+                          ...form,
+                          branch,
+                          projectId: form.projectId || suggestProjectId(form.movementTypeId, branch),
+                        });
                       }}
-                    >
-                      Remover
-                    </button>
-                  </small>
-                ) : clearNota ? (
-                  <small className="muted">A nota será removida ao salvar.</small>
-                ) : (
-                  <small className="muted">Opcional. Até 10 MB.</small>
-                )}
-              </label>
-              <p className="muted wide">
-                Natureza: {natureLabel(form.nature)} · {typeLabel(form.type)}
-                {selectedMember ? ` · ${selectedMember.name}` : ""}
-              </p>
+                      options={ALL_BRANCHES.map((id) => ({ value: id, label: BRANCH_LABELS[id] }))}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Meio</span>
+                    <SearchableSelect
+                      required
+                      value={form.method}
+                      placeholder="Selecione"
+                      onChange={(value) => setForm({ ...form, method: value as PaymentMethod })}
+                      options={[
+                        { value: "pix", label: "Pix" },
+                        { value: "transfer", label: "Transferência" },
+                        { value: "cash", label: "Dinheiro" },
+                        { value: "card", label: "Cartão" },
+                        { value: "other", label: "Outro" },
+                      ]}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Previsão de gastos</span>
+                    <SearchableSelect
+                      value={form.projectId}
+                      onChange={(projectId) => setForm({ ...form, projectId })}
+                      placeholder="Nenhuma"
+                      searchPlaceholder="Buscar previsão…"
+                      options={[
+                        { value: "", label: "Nenhuma" },
+                        ...(projects.data ?? []).map((p) => ({
+                          value: p.id,
+                          label: `${p.name}${p.branch ? ` · ${BRANCH_LABELS[p.branch]}` : ""}`,
+                        })),
+                      ]}
+                    />
+                  </label>
+                  <div className="field">
+                    <span>Conta fixa ou variável</span>
+                    <div className="flag-row">
+                      <button
+                        type="button"
+                        className={`flag ${form.nature === "fixed" ? "is-on" : ""}`}
+                        onClick={() => setForm({ ...form, nature: "fixed" })}
+                      >
+                        Fixa
+                      </button>
+                      <button
+                        type="button"
+                        className={`flag ${form.nature === "variable" ? "is-on" : ""}`}
+                        onClick={() => setForm({ ...form, nature: "variable" })}
+                      >
+                        Variável
+                      </button>
+                    </div>
+                  </div>
+                  {form.type !== "expense" ? renderLaunchNota() : null}
+                </div>
+              </details>
+
+              <div className="launch-summary wide" aria-live="polite">
+                <span className="launch-summary-label">Confira antes de salvar</span>
+                <p>
+                  {launchSummary({
+                    kind: launchKind,
+                    type: form.type,
+                    typeName:
+                      selectedMovement && !isUnidentifiedName(selectedMovement.name)
+                        ? selectedMovement.name
+                        : undefined,
+                    amount: parseMoney(form.amount) || 0,
+                    description: launchDescription,
+                    memberName: selectedMember?.name,
+                    date: form.date,
+                    paymentStatus: form.paymentStatus,
+                    paidAt: form.paidAt,
+                    methodLabel: methodLabel(form.method),
+                  }).map((part, index) =>
+                    part.strong ? <strong key={index}>{part.text}</strong> : <span key={index}>{part.text}</span>,
+                  )}
+                </p>
+                {attempted
+                  ? launchCheck.errors.map((message) => (
+                      <div key={message} className="launch-check is-error">
+                        {message}
+                      </div>
+                    ))
+                  : null}
+                {launchCheck.warnings.map((message) => (
+                  <div key={message} className="launch-check is-warn">
+                    {message}
+                  </div>
+                ))}
+                {!launchCheck.errors.length && !launchCheck.warnings.length ? (
+                  <div className="launch-check is-ok">Tudo coerente com o tipo escolhido.</div>
+                ) : null}
+                {launchNeedsAck ? (
+                  <label className="launch-ack">
+                    <input type="checkbox" checked={warningsAck} onChange={(e) => setWarningsAck(e.target.checked)} />
+                    Conferi os avisos, está certo assim.
+                  </label>
+                ) : null}
+              </div>
               <div className="modal-actions wide">
                 {identifyQueue.length > 1 ? (
                   <button className="btn btn-ghost" type="button" onClick={skipIdentify} disabled={saving}>
@@ -1781,7 +2103,11 @@ export default function CashFlow() {
                     Cancelar
                   </button>
                 )}
-                <SubmitButton busy={saving} busyLabel={editing ? "Salvando…" : "Lançando…"}>
+                <SubmitButton
+                  busy={saving}
+                  busyLabel={editing ? "Salvando…" : "Lançando…"}
+                  disabled={launchNeedsAck && !warningsAck}
+                >
                   {editing ? (identifyQueue.length ? "Salvar e continuar" : "Salvar alteração") : "Lançar"}
                 </SubmitButton>
               </div>
@@ -1799,31 +2125,36 @@ export default function CashFlow() {
             <form onSubmit={(event) => void saveSplit(event)} className={formClass("form-grid", attempted)} noValidate>
               {error ? <div className="error wide">{error}</div> : null}
               <p className="muted wide">
-                {formatDate(splitting.date)} · total {brl(splitting.amount)} · {splitting.description}. Cada parte vira
-                um lançamento; a soma precisa ser exatamente o total. Serve para qualquer tipo (mensalidade, projeto,
-                cantina, despesas etc.): escolha a rubrica e, se fizer sentido, o <strong>associado</strong> em cada
-                parte — o fluxo de caixa mantém o valor original e mostra para quem foi o rateio.
+                {formatDate(splitting.paidAt ?? splitting.date)} · {splitting.description}
               </p>
-              {splitHasMensalidade ? (
-                <p className="muted wide">
-                  Em cada parte do tipo <strong>Mensalidade</strong>, escolha o associado e o{" "}
-                  <strong>mês que ela quita</strong> (adiantamento ou atrasado). É esse mês que recebe a baixa na tela
-                  Mensalidades; a data do PIX fica como data de pagamento.
-                </p>
-              ) : null}
+              <div className="split-meter wide" aria-live="polite">
+                <div className="split-meter__bar" aria-hidden>
+                  {splitParts.map((part, index) => (
+                    <i
+                      key={index}
+                      style={{
+                        width: `${Math.max(0, Math.min(100, ((parseMoney(part.amount) || 0) / splitting.amount) * 100))}%`,
+                      }}
+                    />
+                  ))}
+                </div>
+                <div className="split-meter__text">
+                  <span className="muted">
+                    Distribuído {brl(splitSum)} de {brl(splitting.amount)}
+                  </span>
+                  {splitDiff === 0 ? (
+                    <span className="split-meter__pill is-ok">Fechou</span>
+                  ) : (
+                    <span className={`split-meter__pill ${splitDiff > 0 ? "is-warn" : "is-bad"}`}>
+                      {splitDiff > 0 ? "Faltam" : "Passou"} {brl(Math.abs(splitDiff))}
+                    </span>
+                  )}
+                </div>
+              </div>
               {splitParts.map((part, index) => (
                 <div key={index} className="wide form-grid split-part">
                   <label className="field">
-                    <span>Parte {index + 1} (R$)</span>
-                    <input
-                      required
-                      inputMode="decimal"
-                      value={part.amount}
-                      onChange={(e) => updateSplitPart(index, { amount: maskMoney(e.target.value) })}
-                    />
-                  </label>
-                  <label className="field">
-                    <span>Tipo</span>
+                    <span>Parte {index + 1} · tipo</span>
                     <SearchableSelect
                       required
                       value={part.movementTypeId}
@@ -1861,6 +2192,15 @@ export default function CashFlow() {
                             label: `${item.name}${item.branch ? ` · ${BRANCH_LABELS[item.branch]}` : ""}`,
                           })),
                       ]}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Valor (R$)</span>
+                    <input
+                      required
+                      inputMode="decimal"
+                      value={part.amount}
+                      onChange={(e) => updateSplitPart(index, { amount: maskMoney(e.target.value) })}
                     />
                   </label>
                   {isMensalidadeTypeId(part.movementTypeId) ? (
@@ -1901,6 +2241,27 @@ export default function CashFlow() {
                   </label>
                 </div>
               ))}
+              <div className="launch-summary wide">
+                <span className="launch-summary-label">
+                  {splitting.type === "income" ? "Este Pix quita" : "Este pagamento se divide em"}
+                </span>
+                <ul className="split-summary">
+                  {splitParts.map((part, index) => {
+                    const typeName = (types.data ?? []).find((item) => item.id === part.movementTypeId)?.name;
+                    const memberName = (members.data ?? []).find((item) => item.id === part.memberId)?.name;
+                    const what =
+                      isMensalidadeTypeId(part.movementTypeId) && part.competence
+                        ? `mensalidade de ${MONTHS[Number(part.competence.slice(5, 7)) - 1]?.toLowerCase()}/${part.competence.slice(0, 4)}`
+                        : (typeName ?? "tipo a escolher");
+                    return (
+                      <li key={index}>
+                        <strong>{brl(parseMoney(part.amount) || 0)}</strong> · {what}
+                        {memberName ? ` · ${memberName}` : ""}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
               <div className="modal-actions wide">
                 <button
                   className="btn btn-outline"
@@ -1936,7 +2297,11 @@ export default function CashFlow() {
                 >
                   Cancelar
                 </button>
-                <SubmitButton busy={saving} busyLabel={splitEditing ? "Salvando…" : "Rateando…"}>
+                <SubmitButton
+                  busy={saving}
+                  busyLabel={splitEditing ? "Salvando…" : "Rateando…"}
+                  disabled={splitDiff !== 0}
+                >
                   {splitEditing ? "Salvar rateio" : "Ratear"}
                 </SubmitButton>
               </div>
@@ -1960,6 +2325,43 @@ export default function CashFlow() {
               toast.success("Nota anexada ao lançamento.");
               void Promise.all([flow.reload(), txs.reload(), yearTxs.reload()]);
             }}
+          />
+        ) : null}
+        {showTrash ? (
+          <TrashModal
+            isAdmin={isAdmin}
+            onClose={() => setShowTrash(false)}
+            onChanged={(message) => {
+              toast.success(message);
+              void reloadAll();
+            }}
+          />
+        ) : null}
+        {showDuplicates ? (
+          <DuplicatesModal
+            onClose={() => setShowDuplicates(false)}
+            onChanged={(message) => {
+              toast.success(message);
+              void reloadAll();
+            }}
+          />
+        ) : null}
+        {showReconcile ? (
+          <ReconciliationModal
+            from={new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10)}
+            to={todayISO()}
+            onClose={() => setShowReconcile(false)}
+            onChanged={(message) => {
+              toast.success(message);
+              void reloadAll();
+            }}
+          />
+        ) : null}
+        {historyOf ? (
+          <HistoryModal
+            transactionId={historyOf.id}
+            title={`${historyOf.description} · ${brl(historyOf.amount)}`}
+            onClose={() => setHistoryOf(null)}
           />
         ) : null}
         {allocateMensalidade ? (

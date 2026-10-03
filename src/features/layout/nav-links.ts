@@ -13,6 +13,7 @@ import {
   FaPercentage,
   FaReceipt,
   FaThLarge,
+  FaUserSecret,
   FaUserShield,
   FaUsers,
   FaWallet,
@@ -71,9 +72,10 @@ export const NAV_SECTIONS: NavSection[] = [
     label: "Configurações",
     icon: FaCog,
     items: [
-      { to: "/relatorios", label: "Relatório", icon: FaReceipt, roles: ["admin"] },
+      { to: "/relatorios", label: "Relatórios", icon: FaReceipt, roles: ["admin"] },
       { to: "/integracao", label: "Integrações", icon: FaFileImport, roles: ["admin", "tesoureiro"] },
       { to: "/configuracoes", label: "Disparos de mensagem", icon: FaPaperPlane, roles: ["admin"] },
+      { to: "/auditoria", label: "Auditoria", icon: FaUserSecret, roles: ["superadmin"] },
     ],
   },
 ];

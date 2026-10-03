@@ -42,8 +42,10 @@ export function nextSortDir(current: SortDir | null, sameColumn: boolean): SortD
   return current === "asc" ? "desc" : "asc";
 }
 
+const TEXT_COLLATOR = new Intl.Collator("pt-BR", { sensitivity: "base", numeric: true });
+
 export function compareText(a: string, b: string) {
-  return a.localeCompare(b, "pt-BR", { sensitivity: "base", numeric: true });
+  return TEXT_COLLATOR.compare(a, b);
 }
 
 export function compareNumber(a: number, b: number) {

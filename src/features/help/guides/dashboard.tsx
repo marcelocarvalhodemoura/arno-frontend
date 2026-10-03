@@ -6,13 +6,31 @@ export const dashboardGuide: PageGuideContent = {
   intro: "Painel do administrador: visão do período, associados, caixa, previsão × realizado e gráficos por ramo.",
   steps: [
     {
+      id: "next-steps",
+      title: "Próximos passos",
+      body: (
+        <>
+          <p>
+            O painel abre com as pendências da tesouraria, da mais urgente para a menos: vencidas, Pix para conciliar,
+            créditos sem tipo, duplicados, mês a fechar e extrato sem sincronizar.
+          </p>
+          <p className="muted">Cada cartão leva à tela certa. Sem pendências, aparece um cartão verde.</p>
+        </>
+      ),
+      media: {
+        src: "/help/dashboard-proximos-passos.png",
+        alt: "Cartões de próximos passos no painel",
+        caption: "Comece o dia por aqui.",
+      },
+    },
+    {
       id: "period",
       title: "Escolha o período",
       body: (
         <>
           <p>
-            Use o filtro de mês e ano (ou ano todo). Todos os cards e gráficos respondem a esse recorte. O atalho{" "}
-            <strong>Abrir previsão</strong> leva ao orçamento anual.
+            Use o período no topo da tela (mês e ano, ou ano todo). Todos os cards e gráficos respondem a esse recorte.
+            O atalho <strong>Abrir previsão</strong> leva ao orçamento anual.
           </p>
         </>
       ),

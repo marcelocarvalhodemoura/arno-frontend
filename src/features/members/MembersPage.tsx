@@ -33,7 +33,8 @@ import Pager from "@/shared/ui/Pager";
 import IconButton from "@/shared/ui/IconButton";
 import SearchableSelect from "@/shared/ui/SearchableSelect";
 import { AnimatePresence } from "framer-motion";
-import { FaPen, FaTrashAlt, FaUserCheck, FaUserSlash, FaWallet } from "react-icons/fa";
+import { FaIdCard, FaPen, FaTrashAlt, FaUserCheck, FaUserSlash, FaWallet } from "react-icons/fa";
+import MemberProfileModal from "@/features/members/MemberProfileModal";
 import { api } from "@/core/http";
 import { useToast } from "@/shared/feedback/toast";
 import { brl, formatDate, holderKindLabel, roleLabel, yesNo } from "@/shared/lib/format";
@@ -134,6 +135,7 @@ export default function Members() {
   const [flashId, flash] = useFlashId();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<MemberView | null>(null);
+  const [profileOf, setProfileOf] = useState<string | null>(null);
   const [form, setForm] = useState(emptyMember);
   const [guardians, setGuardians] = useState<GuardianDraft[]>([blankGuardian()]);
   const [error, setError] = useState<string | null>(null);
@@ -501,7 +503,7 @@ export default function Members() {
               />
             </label>
           </FilterBar>
-          <ListingResults fetching={list.loading} filtering={listing.busy} fetchLabel="Atualizando associados…">
+          <ListingResults fetching={list.loading} fetchLabel="Atualizando associados…">
             <div className="table-wrap">
               <table className="data">
                 <thead>
@@ -587,6 +589,9 @@ export default function Members() {
                         </Badge>
                       </td>
                       <td className="cell-actions">
+                        <IconButton label="Ver ficha do associado" onClick={() => setProfileOf(m.id)}>
+                          <FaIdCard />
+                        </IconButton>
                         <IconButton label="Alterar associado" onClick={() => openEdit(m)}>
                           <FaPen />
                         </IconButton>
@@ -958,11 +963,7 @@ export default function Members() {
                     />
                   </label>
                 </FilterBar>
-                <ListingResults
-                  filtering={accountListing.busy}
-                  fetching={list.loading}
-                  fetchLabel="Atualizando contas…"
-                >
+                <ListingResults fetching={list.loading} fetchLabel="Atualizando contas…">
                   <div className="table-wrap">
                     <table className="data">
                       <thead>
@@ -1138,6 +1139,7 @@ export default function Members() {
           </Modal>
         ) : null}
       </AnimatePresence>
+      {profileOf ? <MemberProfileModal memberId={profileOf} onClose={() => setProfileOf(null)} /> : null}
     </div>
   );
 }

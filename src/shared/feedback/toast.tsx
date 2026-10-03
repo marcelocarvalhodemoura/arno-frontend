@@ -5,14 +5,19 @@ import { duration, ease } from "@/shared/lib/motion";
 
 type ToastKind = "success" | "error";
 
+type ToastAction = { label: string; onClick: () => void };
+
 type ToastItem = {
   id: number;
   kind: ToastKind;
   message: string;
+  action?: ToastAction;
 };
 
+type ToastOptions = { action?: ToastAction; durationMs?: number };
+
 type ToastApi = {
-  success: (message: string) => void;
+  success: (message: string, options?: ToastOptions) => void;
   error: (message: string) => void;
 };
 
@@ -23,7 +28,7 @@ const ToastContext = createContext<ToastApi>({
 
 let nextId = 1;
 
-function ToastStack({ toasts }: { toasts: ToastItem[] }) {
+function ToastStack({ toasts, dismiss }: { toasts: ToastItem[]; dismiss: (id: number) => void }) {
   const reduce = useReducedMotion();
   return (
     <div className="toasts" aria-live="polite" aria-relevant="additions">
@@ -40,6 +45,18 @@ function ToastStack({ toasts }: { toasts: ToastItem[] }) {
           >
             {toast.kind === "success" ? <FaCheckCircle /> : <FaExclamationCircle />}
             <span>{toast.message}</span>
+            {toast.action ? (
+              <button
+                type="button"
+                className="toast__action"
+                onClick={() => {
+                  toast.action?.onClick();
+                  dismiss(toast.id);
+                }}
+              >
+                {toast.action.label}
+              </button>
+            ) : null}
           </motion.div>
         ))}
       </AnimatePresence>
@@ -50,17 +67,22 @@ function ToastStack({ toasts }: { toasts: ToastItem[] }) {
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
-  const push = useCallback((kind: ToastKind, message: string) => {
-    const id = nextId++;
-    setToasts((current) => [...current, { id, kind, message }]);
-    window.setTimeout(() => {
-      setToasts((current) => current.filter((item) => item.id !== id));
-    }, 4200);
+  const dismiss = useCallback((id: number) => {
+    setToasts((current) => current.filter((item) => item.id !== id));
   }, []);
+
+  const push = useCallback(
+    (kind: ToastKind, message: string, options?: ToastOptions) => {
+      const id = nextId++;
+      setToasts((current) => [...current, { id, kind, message, action: options?.action }]);
+      window.setTimeout(() => dismiss(id), options?.durationMs ?? (options?.action ? 8000 : 4200));
+    },
+    [dismiss],
+  );
 
   const value = useMemo<ToastApi>(
     () => ({
-      success: (message) => push("success", message),
+      success: (message, options) => push("success", message, options),
       error: (message) => push("error", message),
     }),
     [push],
@@ -69,7 +91,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <ToastStack toasts={toasts} />
+      <ToastStack toasts={toasts} dismiss={dismiss} />
     </ToastContext.Provider>
   );
 }

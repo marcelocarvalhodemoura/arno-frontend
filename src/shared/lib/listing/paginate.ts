@@ -1,5 +1,4 @@
 export const PAGE_SIZES = [10, 15, 20, 50] as const;
-export const LISTING_BUSY_MS = 360;
 export type PageSize = (typeof PAGE_SIZES)[number];
 
 export type PageSlice<T> = {

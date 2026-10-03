@@ -18,6 +18,7 @@ import SnackFundPage from "@/features/snack-fund/SnackFundPage";
 import ArrearsPage from "@/features/arrears/ArrearsPage";
 import ProjectsPage from "@/features/projects/ProjectsPage";
 import ReportsPage from "@/features/reports/ReportsPage";
+import AuditPage from "@/features/audit/AuditPage";
 import SettingsPage from "@/features/settings/SettingsPage";
 import SessionSplash from "@/shared/ui/SessionSplash";
 
@@ -90,6 +91,15 @@ export function AppRouter() {
                   </RequireRole>
                 }
               />
+              <Route
+                path="auditoria"
+                element={
+                  <RequireRole roles={["superadmin"]}>
+                    <AuditPage />
+                  </RequireRole>
+                }
+              />
+              <Route path="prestacao-de-contas" element={<Navigate to="/relatorios?modelo=assembly" replace />} />
               <Route
                 path="configuracoes"
                 element={

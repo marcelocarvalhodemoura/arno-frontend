@@ -209,7 +209,7 @@ export default function MovementTypes() {
               />
             </label>
           </FilterBar>
-          <ListingResults fetching={list.loading} filtering={listing.busy} fetchLabel="Atualizando tipos…">
+          <ListingResults fetching={list.loading} fetchLabel="Atualizando tipos…">
             <table className="data">
               <thead>
                 <tr>

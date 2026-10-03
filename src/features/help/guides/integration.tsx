@@ -73,11 +73,16 @@ export const integrationGuide: PageGuideContent = {
               por associado/rubrica).
             </li>
             <li>
-              <strong>Linhas amarelas / sem tipo</strong> — vão ao caixa para Identificar. Lá classifique ou rateie
-              (adiantamento, atrasados, família, dívida).
+              <strong>Linhas amarelas / sem tipo</strong> — vão ao caixa. Em <strong>Próximos passos</strong>, comece
+              por <em>Revisar sugestões</em> (conciliação assistida): o sistema sugere a mensalidade de cada Pix e você
+              só confirma. O que sobrar, classifique ou rateie em Identificar.
+            </li>
+            <li>
+              <strong>Importou o mesmo extrato duas vezes?</strong> — nada é apagado sozinho: as cópias aparecem em{" "}
+              <em>Possíveis duplicados</em> no caixa para você decidir.
             </li>
           </ul>
-          <p className="muted">Classificar na importação evita limpar pendências duplicadas no fluxo de caixa.</p>
+          <p className="muted">Classificar na importação evita pendências duplicadas no fluxo de caixa.</p>
         </>
       ),
       media: {

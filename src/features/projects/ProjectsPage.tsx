@@ -25,7 +25,7 @@ import { AnimatePresence } from "framer-motion";
 import { FaPen } from "react-icons/fa";
 import { api } from "@/core/http";
 import { useToast } from "@/shared/feedback/toast";
-import { budgetPct, budgetStatus, budgetStatusLabel } from "@/shared/lib/budget";
+import { budgetPaceMonth, budgetPct, budgetStatus, budgetStatusLabel } from "@/shared/lib/budget";
 import { brl } from "@/shared/lib/format";
 import { matchesQuery, usePagedList } from "@/shared/lib/listing";
 import { formatMoney, maskMoney, parseMoney } from "@/shared/lib/masks";
@@ -76,7 +76,7 @@ export default function Projects() {
 
   const project = list.data?.[0];
   const meta = TABS.find((item) => item.id === branch);
-  const paceMonth = new Date().getMonth() + 1;
+  const paceMonth = budgetPaceMonth(project?.year ?? year);
   const itemRows = useMemo(
     () => (project?.items ?? []).filter((item) => matchesQuery(query, [item.description, item.category])),
     [project, query],
@@ -306,7 +306,7 @@ export default function Projects() {
                 <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Descrição ou categoria…" />
               </label>
             </FilterBar>
-            <ListingResults fetching={list.loading} filtering={listing.busy} fetchLabel="Atualizando previsão…">
+            <ListingResults fetching={list.loading} fetchLabel="Atualizando previsão…">
               <table className="data">
                 <thead>
                   <tr>

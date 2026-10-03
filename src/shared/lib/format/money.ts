@@ -1,8 +1,7 @@
+const BRL_FORMAT = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+
 export function brl(value: number): string {
-  return value.toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  });
+  return BRL_FORMAT.format(value);
 }
 
 export function chartMoney(value: unknown): string {

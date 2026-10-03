@@ -3,7 +3,8 @@ import type { PageGuideContent } from "@/features/help/types";
 export const usersGuide: PageGuideContent = {
   id: "users",
   title: "Como usar o controle de usuários",
-  intro: "Cadastro de quem acessa a tesouraria: administradores e tesoureiros, com ativação e troca de senha.",
+  intro:
+    "Cadastro de quem acessa a tesouraria: super admin, administradores e tesoureiros, com ativação e troca de senha.",
   steps: [
     {
       id: "roles",
@@ -11,6 +12,10 @@ export const usersGuide: PageGuideContent = {
       body: (
         <>
           <ul>
+            <li>
+              <strong>Super admin</strong> — tudo do administrador e mais a <strong>Auditoria</strong> (uso do sistema
+              por usuário). Só um super admin cria ou altera outro super admin.
+            </li>
             <li>
               <strong>Administrador</strong> — painel, relatórios, usuários, previsão, configurações e o restante.
             </li>

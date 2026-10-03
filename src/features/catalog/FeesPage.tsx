@@ -137,7 +137,7 @@ export default function Fees() {
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Nome ou valor…" />
             </label>
           </FilterBar>
-          <ListingResults fetching={list.loading} filtering={listing.busy} fetchLabel="Atualizando taxas…">
+          <ListingResults fetching={list.loading} fetchLabel="Atualizando taxas…">
             <div className="table-wrap">
               <table className="data">
                 <thead>

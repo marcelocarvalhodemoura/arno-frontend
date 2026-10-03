@@ -1,3 +1,4 @@
+import { useAuth } from "@/features/auth";
 import { useMemo, useState, type FormEvent } from "react";
 import type { AppUser, UserRole } from "@/domain";
 import RecordStamp from "@/shared/ui/RecordStamp";
@@ -40,6 +41,7 @@ const empty = {
 };
 
 const roleLabel: Record<UserRole, string> = {
+  superadmin: "Super admin",
   admin: "Administrador",
   tesoureiro: "Tesoureiro",
 };
@@ -49,6 +51,7 @@ function passwordsDiffer(password: string, confirm: string) {
 }
 
 export default function Users() {
+  const { role: myRole } = useAuth();
   const toast = useToast();
   const list = useFetch<UserView[]>("/users");
   const [flashId, flash] = useFlashId();
@@ -242,6 +245,7 @@ export default function Users() {
                 placeholder="Todos"
                 options={[
                   { value: "", label: "Todos" },
+                  { value: "superadmin", label: "Super admin" },
                   { value: "admin", label: "Administrador" },
                   { value: "tesoureiro", label: "Tesoureiro" },
                 ]}
@@ -261,7 +265,7 @@ export default function Users() {
               />
             </label>
           </FilterBar>
-          <ListingResults fetching={list.loading} filtering={listing.busy} fetchLabel="Atualizando usuários…">
+          <ListingResults fetching={list.loading} fetchLabel="Atualizando usuários…">
             <table className="data">
               <thead>
                 <tr>
@@ -368,6 +372,9 @@ export default function Users() {
                       label: "Tesoureiro — caixa, integração, tipos, associados e contas",
                     },
                     { value: "admin", label: "Administrador — painel e todas as páginas" },
+                    ...(myRole === "superadmin"
+                      ? [{ value: "superadmin", label: "Super admin — tudo do admin + auditoria de uso" }]
+                      : []),
                   ]}
                 />
               </label>

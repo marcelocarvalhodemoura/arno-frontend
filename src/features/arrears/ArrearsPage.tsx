@@ -361,7 +361,7 @@ export default function ArrearsPage() {
               />
             </label>
           </FilterBar>
-          <ListingResults fetching={list.loading} filtering={listing.busy} fetchLabel="Atualizando dívidas…">
+          <ListingResults fetching={list.loading} fetchLabel="Atualizando dívidas…">
             <div className="table-wrap">
               <table className="data">
                 <thead>

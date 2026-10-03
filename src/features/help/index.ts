@@ -14,4 +14,5 @@ export { feesGuide } from "@/features/help/guides/fees";
 export { movementTypesGuide } from "@/features/help/guides/movement-types";
 export { settingsGuide } from "@/features/help/guides/settings";
 export { reportsGuide } from "@/features/help/guides/reports";
+export { auditGuide } from "@/features/help/guides/audit";
 export type { PageGuideContent, GuideStep, GuideMedia } from "@/features/help/types";
