@@ -102,7 +102,7 @@ export default function SnackFundPage() {
         <PageHeader
           kicker="Movimentações"
           title="Taxa do lanche"
-          subtitle={`Parcela de R$ 24 da mensalidade (sem taxa do clube). Disponível em ${periodLabel} = arrecadado − gastos de Lanche/Alimentação.`}
+          subtitle={`Parte do lanche de cada mensalidade paga, conforme a Composição da mensalidade. Disponível em ${periodLabel} = arrecadado − gastos de Lanche/Alimentação.`}
           actions={
             <div className="page-head__actions">
               <PageGuide guide={snackFundGuide} />
@@ -123,8 +123,8 @@ export default function SnackFundPage() {
             value={brl(data.collected)}
             hint={
               isYearSummary(data)
-                ? "R$ 24 × mensalidades pagas no ano"
-                : `${(data as SnackFundPreview).incomeCount} mensalidade(s) · R$ ${data.snackShareUnit.toFixed(0)} cada`
+                ? "Parte do lanche das mensalidades pagas no ano"
+                : `${(data as SnackFundPreview).incomeCount} mensalidade(s) · parte do lanche de cada uma`
             }
             tone="pos"
           />

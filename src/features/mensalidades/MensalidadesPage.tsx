@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
+  activeFeeSchedule,
   BRANCH_LABELS,
+  periodFor,
   YOUTH_BRANCHES,
   type MensalidadeCell,
   type MensalidadeReport,
@@ -11,6 +13,7 @@ import {
   type YouthBranchId,
 } from "@/domain";
 import PageHeader from "@/shared/ui/PageHeader";
+import FeeCategoryBadge from "@/features/fee-schedule/FeeCategoryBadge";
 import StatCard, { Badge } from "@/shared/ui/StatCard";
 import { PageGuide, mensalidadesGuide } from "@/features/help";
 import PageLoader from "@/shared/ui/PageLoader";
@@ -34,6 +37,15 @@ import { useToast } from "@/shared/feedback/toast";
 
 const SHORT_MONTHS = ["Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov"];
 const SCOUT_MONTHS = [3, 4, 5, 6, 7, 8, 9, 10, 11];
+
+/** Valor da taxa do clube (+ diluição) no mês, conforme a composição. */
+function clubFeeHint(branch: string, dueDate: string | null) {
+  const period = periodFor(activeFeeSchedule(), dueDate);
+  const parts = branch === "pioneiro" ? period.pioneer : period.regular;
+  if (!parts.clubOnTime && !parts.clubLate) return " (sem taxa do clube na composição deste mês)";
+  const dilution = parts.dilution ? ` + diluição ${brl(parts.dilution)}` : "";
+  return ` (clube ${brl(parts.clubOnTime)} no prazo · ${brl(parts.clubLate)} após o vencimento${dilution})`;
+}
 
 export default function Mensalidades() {
   const navigate = useNavigate();
@@ -312,7 +324,7 @@ export default function Mensalidades() {
     const action = clubFeeIncluded ? "incluir" : "remover";
     if (
       !confirm(
-        `Confirma ${action} a taxa do clube (R$ 20, exceto pioneiros) em todas as mensalidades pendentes de ${label}/${year}?`,
+        `Confirma ${action} a taxa do clube (e a diluição) em todas as mensalidades pendentes de ${label}/${year}? Valores especiais de família não mudam.`,
       )
     ) {
       return;
@@ -421,7 +433,7 @@ export default function Mensalidades() {
       <PageHeader
         kicker="Mensalidades"
         title={`Ano escoteiro ${year}`}
-        subtitle={`Março a novembro. Mar/abr: R$ 60 (R$ 15 pioneiros). A partir de maio: cartaz atual com taxa do clube e diluição. Vencimento todo dia ${dueDay}.`}
+        subtitle={`Março a novembro. Valores conforme a Composição da mensalidade. Vencimento todo dia ${dueDay}.`}
         actions={
           <div className="page-head__actions">
             <PageGuide guide={mensalidadesGuide} />
@@ -566,9 +578,11 @@ export default function Mensalidades() {
                           />
                           <div>
                             <strong>{row.name}</strong>
+                            <div>
+                              <FeeCategoryBadge profile={row} when={year === currentYear ? undefined : `${year}-11`} />
+                            </div>
                             <div className="muted">
                               {BRANCH_LABELS[row.branch]} · {roleLabel(row.role)}
-                              {row.clubeLtc ? " · sócio Lindóia" : ""}
                               {row.feeOverride != null
                                 ? row.chiefChild
                                   ? " · valor especial · filho de chefe"
@@ -629,13 +643,14 @@ export default function Mensalidades() {
               {settlementLabel(picked.cell.status)} · {brl(picked.cell.amount)}
               {picked.cell.dueDate ? ` · vence ${formatDate(picked.cell.dueDate)}` : ""}
             </p>
+            <p>
+              <FeeCategoryBadge profile={picked.row} when={picked.cell.dueDate} showPeriod />
+            </p>
             <p className="muted">
               Taxa do clube neste mês: <strong>{picked.cell.clubFeeIncluded ? "incluída" : "removida"}</strong>
               {picked.row.feeOverride != null
                 ? " (valor especial: a taxa do clube não altera o total)"
-                : picked.row.branch === "pioneiro"
-                  ? " (pioneiro não tem parcela do clube)"
-                  : " (R$ 20)"}
+                : clubFeeHint(picked.row.branch, picked.cell.dueDate)}
             </p>
             {picked.cell.status !== "paid" ? (
               <>

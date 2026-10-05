@@ -145,7 +145,7 @@ export default function ClubRemittancePage() {
         <PageHeader
           kicker="Movimentações"
           title="Repasse ao clube"
-          subtitle={`Taxa Lindóia embutida nas mensalidades pagas em ${periodLabel}. Diluição de R$ 4,50 fica com o grupo.`}
+          subtitle={`Taxa Lindóia embutida nas mensalidades pagas em ${periodLabel}. A diluição fica com o grupo.`}
           actions={<PageGuide guide={clubRemittanceGuide} />}
         />
 

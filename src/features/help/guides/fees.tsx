@@ -4,16 +4,21 @@ export const feesGuide: PageGuideContent = {
   id: "fees",
   title: "Como usar o cadastro de taxas",
   intro:
-    "Tabela oficial da mensalidade (base, extra de não sócio, pontualidade e atraso) e demais taxas do grupo usadas nos cálculos.",
+    "Valores de referência para reconhecer pagamentos no extrato bancário. Este cadastro não altera o cálculo da mensalidade.",
   steps: [
     {
       id: "list",
-      title: "Lista de taxas",
+      title: "Para que serve",
       body: (
         <>
           <p>
-            Cada taxa tem nome, valores e regras. A mensalidade oficial alimenta a grade e o cartaz; outras taxas
-            permanecem neste cadastro para referência e lançamentos.
+            Na importação do extrato, quando um Pix de entrada é de um associado identificado e o tipo ainda não foi
+            reconhecido, o sistema procura aqui uma taxa com o mesmo valor. Se existir um{" "}
+            <strong>Tipo de movimentação</strong> com exatamente o mesmo nome da taxa, o Pix é sugerido nesse tipo.
+          </p>
+          <p>
+            Exemplo: taxa <strong>Acampamento</strong> de R$ 150,00 e tipo de movimentação <strong>Acampamento</strong>{" "}
+            — um Pix de R$ 150,00 de um associado vem sugerido como Acampamento.
           </p>
         </>
       ),
@@ -24,20 +29,21 @@ export const feesGuide: PageGuideContent = {
       body: (
         <>
           <p>
-            Em <strong>Nova taxa</strong> ou ao editar: defina os valores (pontual, atraso, extras) conforme o tipo.
-            Mudanças na tabela oficial passam a valer nos novos cálculos de mensalidade.
+            Em <strong>Nova taxa</strong> ou ao editar: informe o nome e o valor. Para a sugestão funcionar, use o mesmo
+            nome de um tipo de movimentação ativo.
           </p>
         </>
       ),
     },
     {
       id: "care",
-      title: "Cuidado ao alterar",
+      title: "Mensalidade não é configurada aqui",
       body: (
         <>
           <p>
-            Alterar a tabela no meio do ano afeta cobranças futuras. Lançamentos já pagos no caixa não são reescritos
-            automaticamente — ajuste pontual fica no fluxo ou na célula da mensalidade.
+            As taxas de mensalidade listadas são só referência. Alterar ou excluir esses valores{" "}
+            <strong>não muda</strong> a cobrança da mensalidade, o repasse ao clube, a taxa do lanche nem a caixinha dos
+            ramos. Os valores da mensalidade ficam na tela <strong>Composição da mensalidade</strong>.
           </p>
         </>
       ),

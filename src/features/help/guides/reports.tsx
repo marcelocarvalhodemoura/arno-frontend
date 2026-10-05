@@ -49,7 +49,8 @@ export const reportsGuide: PageGuideContent = {
           </p>
           <p className="muted">
             Marque <em>Incluir o livro-caixa detalhado</em> para ver e imprimir lançamento a lançamento, com saldo
-            acumulado. Agrupado por ramo, a mensalidade entra só com a caixinha (R$ 8).
+            acumulado. Agrupado por ramo, a mensalidade entra só com a caixinha do ramo (conforme a Composição da
+            mensalidade).
           </p>
         </>
       ),

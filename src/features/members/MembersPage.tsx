@@ -2,8 +2,6 @@ import { useMemo, useState, type FormEvent } from "react";
 import {
   BRANCH_LABELS,
   GUARDIAN_RELATIONSHIPS,
-  SPECIAL_FAMILY_FEE,
-  SPECIAL_FAMILY_FEE_MEMBER,
   YOUTH_BRANCHES,
   lateMonthlyFee,
   onTimeMonthlyFee,
@@ -706,14 +704,14 @@ export default function Members() {
                       const reason = form.discountKind === "chief_child" ? "filho de chefe" : "irmão(s) no grupo";
                       const special = specialFamilyFee(form.clubeLtc);
                       return form.clubeLtc
-                        ? `Valor especial (${reason}, sócio Lindóia): ${brl(special)} a partir de maio. Março/abril seguem a tabela antiga (R$ 60 / R$ 15).`
-                        : `Valor especial (${reason}): ${brl(special)} a partir de maio (não sócio). Sócio Lindóia: ${brl(SPECIAL_FAMILY_FEE_MEMBER)}. Março/abril: tabela antiga (R$ 60 / R$ 15).`;
+                        ? `Valor especial (${reason}, sócio Lindóia): ${brl(special)}. Meses sem valor especial na composição seguem a tabela normal.`
+                        : `Valor especial (${reason}): ${brl(special)} (não sócio). Sócio Lindóia: ${brl(specialFamilyFee(true))}. Meses sem valor especial na composição seguem a tabela normal.`;
                     }
                     const amounts = tableAmounts(form.branch, form.clubeLtc, form.role);
                     if (form.clubeLtc) {
                       return form.branch === "pioneiro"
-                        ? "Jovem pioneiro sócio: só a base de R$ 25,00."
-                        : "Sócio do Lindóia: só a base de R$ 75,00.";
+                        ? `Jovem pioneiro sócio: só a base de ${brl(amounts.onTime)}.`
+                        : `Sócio do Lindóia: só a base de ${brl(amounts.onTime)}.`;
                     }
                     return `Até o dia ${dueDay}: ${brl(amounts.onTime)}. Após o dia ${dueDay}: ${brl(amounts.late)}.`;
                   })()}
@@ -740,11 +738,11 @@ export default function Members() {
                     { value: "none", label: "Tabela oficial" },
                     {
                       value: "chief_child",
-                      label: `Filho de chefe (${brl(SPECIAL_FAMILY_FEE)} / ${brl(SPECIAL_FAMILY_FEE_MEMBER)} sócio)`,
+                      label: `Filho de chefe (${brl(specialFamilyFee(false))} / ${brl(specialFamilyFee(true))} sócio)`,
                     },
                     {
                       value: "siblings",
-                      label: `Irmão(s) no grupo (${brl(SPECIAL_FAMILY_FEE)} / ${brl(SPECIAL_FAMILY_FEE_MEMBER)} sócio)`,
+                      label: `Irmão(s) no grupo (${brl(specialFamilyFee(false))} / ${brl(specialFamilyFee(true))} sócio)`,
                     },
                   ]}
                 />
@@ -817,7 +815,7 @@ export default function Members() {
                   </div>
                   <small className="muted">
                     Busque e marque o irmão (ou irmãos). O vínculo é bidirecional e aplica o valor especial nos dois (
-                    {brl(SPECIAL_FAMILY_FEE)} / {brl(SPECIAL_FAMILY_FEE_MEMBER)} sócio).
+                    {brl(specialFamilyFee(false))} / {brl(specialFamilyFee(true))} sócio).
                   </small>
                 </div>
               ) : null}

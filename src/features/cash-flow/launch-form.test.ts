@@ -6,6 +6,7 @@ import {
   competenceDate,
   launchKindOf,
   launchSummary,
+  mensalidadeTableHint,
   type LaunchCheckInput,
 } from "./launch-form";
 
@@ -163,5 +164,13 @@ describe("launchSummary", () => {
 
   it("gera a descrição automática da mensalidade", () => {
     expect(autoMensalidadeDescription("2026-05-10", "ANA SOUZA")).toBe("Mensalidade Maio 2026 — ANA SOUZA");
+  });
+});
+
+describe("mensalidadeTableHint", () => {
+  it("mostra a tabela do perfil: sócio do Lindóia sem a taxa do clube", () => {
+    expect(mensalidadeTableHint(ana, "2026-05-10")).toContain("89,50");
+    const socio = { ...ana, clubeLtc: true } as Member;
+    expect(mensalidadeTableHint(socio, "2026-05-10")).toBe("Tabela: R$\u00a075,00");
   });
 });

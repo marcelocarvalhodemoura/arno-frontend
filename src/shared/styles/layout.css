@@ -116,7 +116,7 @@
 .sidebar nav {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 6px;
   overflow: auto;
   padding-right: 2px;
 }
@@ -133,6 +133,12 @@
   min-width: 0;
 }
 
+/* Linha fina entre seções: cada grupo fica visualmente separado. */
+.sidebar:not(.is-collapsed) .side-section + .side-section {
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 252, 247, 0.07);
+}
+
 .side-section__toggle {
   display: flex;
   align-items: center;
@@ -144,7 +150,7 @@
   border: 0;
   border-radius: 12px;
   background: transparent;
-  color: rgba(244, 241, 234, 0.55);
+  color: rgba(244, 241, 234, 0.78);
   cursor: pointer;
   text-align: left;
   transition:
@@ -202,9 +208,9 @@
 
 .side-section__label {
   margin: 0;
-  font-size: 0.68rem;
+  font-size: 0.72rem;
   font-weight: 700;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   white-space: nowrap;
   overflow: hidden;
@@ -262,8 +268,10 @@
 .side-section__links {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding-left: 4px;
+  gap: 1px;
+  margin: 2px 0 6px 16px;
+  padding-left: 8px;
+  border-left: 1px solid rgba(255, 252, 247, 0.12);
 }
 
 .side-section__marker {
@@ -294,7 +302,9 @@
 }
 
 .sidebar.is-collapsed .side-section__links {
+  margin: 0;
   padding-left: 0;
+  border-left: 0;
 }
 
 .side-link {
@@ -302,11 +312,11 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px;
-  border-radius: 14px;
-  color: rgba(244, 241, 234, 0.72);
+  padding: 8px 10px;
+  border-radius: 10px;
+  color: rgba(244, 241, 234, 0.66);
   font-weight: 500;
-  font-size: 0.92rem;
+  font-size: 0.88rem;
   white-space: nowrap;
   transition:
     background 0.32s var(--ease),
@@ -316,17 +326,29 @@
 
 .side-link svg {
   flex-shrink: 0;
-  opacity: 0.9;
+  font-size: 0.85rem;
+  opacity: 0.6;
 }
 
-.side-link:hover,
-.side-link.is-active {
-  background: rgba(255, 252, 247, 0.08);
+.side-link:hover {
+  background: rgba(255, 252, 247, 0.06);
   color: var(--cream);
 }
 
+.side-link:hover svg,
+.side-link.is-active svg {
+  opacity: 1;
+}
+
 .side-link.is-active {
+  background: rgba(255, 252, 247, 0.12);
+  color: var(--cream);
+  font-weight: 600;
   box-shadow: inset 3px 0 0 var(--clay);
+}
+
+.side-link.is-active svg {
+  color: var(--gold-soft);
 }
 
 .side-link__label {
@@ -336,6 +358,11 @@
 .sidebar.is-collapsed .side-link {
   justify-content: center;
   padding: 12px 0;
+}
+
+.sidebar.is-collapsed .side-link svg {
+  font-size: 1rem;
+  opacity: 0.85;
 }
 
 .sidebar.is-collapsed .side-link__label {
@@ -635,6 +662,9 @@
   .side-section__links {
     flex-direction: row;
     flex-wrap: wrap;
+    margin: 0;
+    padding-left: 0;
+    border-left: 0;
   }
 
   .sidebar.is-collapsed nav {

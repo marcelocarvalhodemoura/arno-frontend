@@ -6,6 +6,7 @@ import { useAuth } from "@/features/auth";
 import LoginPage from "@/features/auth/LoginPage";
 import CashFlowPage from "@/features/cash-flow/CashFlowPage";
 import FeesPage from "@/features/catalog/FeesPage";
+import FeeSchedulePage from "@/features/fee-schedule/FeeSchedulePage";
 import MovementTypesPage from "@/features/catalog/MovementTypesPage";
 import DashboardPage from "@/features/dashboard/DashboardPage";
 import UsersPage from "@/features/identity/UsersPage";
@@ -74,6 +75,7 @@ export function AppRouter() {
               <Route path="integracao" element={<IntegrationPage />} />
               <Route path="tipos" element={<MovementTypesPage />} />
               <Route path="taxas" element={<FeesPage />} />
+              <Route path="composicao-mensalidade" element={<FeeSchedulePage />} />
               <Route path="associados" element={<MembersPage />} />
               <Route
                 path="projetos"

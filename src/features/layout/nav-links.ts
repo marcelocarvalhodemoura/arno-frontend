@@ -1,6 +1,9 @@
 import {
+  FaAddressBook,
   FaCalendarCheck,
+  FaChartBar,
   FaChartLine,
+  FaChartPie,
   FaCog,
   FaCookieBite,
   FaExchangeAlt,
@@ -36,6 +39,7 @@ export type NavSection = {
   items: NavLinkItem[];
 };
 
+/** Seções por tarefa: rotina do caixa, mensalidades, cadastros, planejamento e administração. */
 export const NAV_SECTIONS: NavSection[] = [
   {
     id: "painel",
@@ -44,36 +48,56 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [{ to: "/", label: "Dashboard", icon: FaHome, end: true, roles: ["admin"] }],
   },
   {
-    id: "movimentacoes",
-    label: "Movimentações",
+    id: "caixa",
+    label: "Caixa",
     icon: FaWallet,
     items: [
       { to: "/fluxo", label: "Fluxo de caixa", icon: FaChartLine, roles: ["admin", "tesoureiro"] },
+      { to: "/integracao", label: "Integrações", icon: FaFileImport, roles: ["admin", "tesoureiro"] },
+    ],
+  },
+  {
+    id: "mensalidades",
+    label: "Mensalidades",
+    icon: FaCalendarCheck,
+    items: [
       { to: "/mensalidades", label: "Mensalidade", icon: FaCalendarCheck, roles: ["admin", "tesoureiro"] },
+      { to: "/dividas", label: "Dívidas", icon: FaHandHoldingUsd, roles: ["admin", "tesoureiro"] },
       { to: "/repasse-clube", label: "Repasse ao clube", icon: FaExchangeAlt, roles: ["admin", "tesoureiro"] },
       { to: "/taxa-lanche", label: "Taxa do lanche", icon: FaCookieBite, roles: ["admin", "tesoureiro"] },
-      { to: "/dividas", label: "Dívidas", icon: FaHandHoldingUsd, roles: ["admin", "tesoureiro"] },
-      { to: "/tipos", label: "Tipo de movimentação", icon: FaListAlt, roles: ["admin", "tesoureiro"] },
-      { to: "/taxas", label: "Taxa", icon: FaPercentage, roles: ["admin", "tesoureiro"] },
-      { to: "/projetos", label: "Previsão de gastos", icon: FaFlag, roles: ["admin"] },
     ],
   },
   {
-    id: "pessoas",
-    label: "Pessoas",
-    icon: FaUsers,
+    id: "cadastros",
+    label: "Cadastros",
+    icon: FaAddressBook,
     items: [
       { to: "/associados", label: "Associados", icon: FaUsers, roles: ["admin", "tesoureiro"] },
-      { to: "/usuarios", label: "Usuários", icon: FaUserShield, roles: ["admin"] },
+      {
+        to: "/composicao-mensalidade",
+        label: "Composição da mensalidade",
+        icon: FaChartPie,
+        roles: ["admin", "tesoureiro"],
+      },
+      { to: "/tipos", label: "Tipos de movimentação", icon: FaListAlt, roles: ["admin", "tesoureiro"] },
+      { to: "/taxas", label: "Taxas", icon: FaPercentage, roles: ["admin", "tesoureiro"] },
     ],
   },
   {
-    id: "configuracoes",
-    label: "Configurações",
+    id: "planejamento",
+    label: "Planejamento",
+    icon: FaChartBar,
+    items: [
+      { to: "/projetos", label: "Previsão de gastos", icon: FaFlag, roles: ["admin"] },
+      { to: "/relatorios", label: "Relatórios", icon: FaReceipt, roles: ["admin"] },
+    ],
+  },
+  {
+    id: "administracao",
+    label: "Administração",
     icon: FaCog,
     items: [
-      { to: "/relatorios", label: "Relatórios", icon: FaReceipt, roles: ["admin"] },
-      { to: "/integracao", label: "Integrações", icon: FaFileImport, roles: ["admin", "tesoureiro"] },
+      { to: "/usuarios", label: "Usuários", icon: FaUserShield, roles: ["admin"] },
       { to: "/configuracoes", label: "Disparos de mensagem", icon: FaPaperPlane, roles: ["admin"] },
       { to: "/auditoria", label: "Auditoria", icon: FaUserSecret, roles: ["superadmin"] },
     ],

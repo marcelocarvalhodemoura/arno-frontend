@@ -11,6 +11,7 @@ export { arrearsGuide } from "@/features/help/guides/arrears";
 export { projectsGuide } from "@/features/help/guides/projects";
 export { usersGuide } from "@/features/help/guides/users";
 export { feesGuide } from "@/features/help/guides/fees";
+export { feeScheduleGuide } from "@/features/help/guides/fee-schedule";
 export { movementTypesGuide } from "@/features/help/guides/movement-types";
 export { settingsGuide } from "@/features/help/guides/settings";
 export { reportsGuide } from "@/features/help/guides/reports";

@@ -15,10 +15,14 @@ export const mensalidadesGuide: PageGuideContent = {
             Cards no topo (pagas, pendentes, vencidas, em aberto) seguem os filtros. Cada linha é um associado; as
             colunas são os meses. Célula verde = paga, amarela = no prazo, vermelha = vencida.
           </p>
+          <p>
+            Abaixo do nome, a etiqueta colorida mostra a <strong>categoria da composição</strong> do associado: demais
+            ramos, pioneiro, irmãos / filho de chefe ou valor personalizado, e se é sócio do Lindóia. Passe o mouse para
+            ver a divisão da mensalidade. Um <strong>*</strong> indica divisão ainda a confirmar pela tesouraria.
+          </p>
           <p className="muted">
-            Março/abril: demais ramos R$ 60; pioneiro R$ 15 no prazo e R$ 20 com atraso. A partir de maio: cartaz atual,
-            com taxa do clube e diluição quando couber. Se houver acordo embutido, o valor da célula já inclui a parcela
-            da dívida.
+            Os valores de cada mês seguem a tela <strong>Composição da mensalidade</strong>, com taxa do clube e
+            diluição quando couber. Se houver acordo embutido, o valor da célula já inclui a parcela da dívida.
           </p>
         </>
       ),
@@ -96,6 +100,7 @@ export const mensalidadesGuide: PageGuideContent = {
           <p>Clique numa célula em aberto para:</p>
           <ul>
             <li>Ver valor pontual e com atraso (e parcela de dívida, se embutida)</li>
+            <li>Ver a categoria da composição e o período que valem naquele mês</li>
             <li>Incluir ou remover taxa do clube naquele mês</li>
             <li>Informar a data de pagamento</li>
             <li>

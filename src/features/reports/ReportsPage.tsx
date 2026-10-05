@@ -504,7 +504,7 @@ export default function Reports() {
             ) : null}
             {groupBy === "branch" && report.kind === "custom" ? (
               <p className="muted">
-                Agrupado por ramo, a mensalidade entra só com a caixinha (R$ 8) e o saldo é gerencial.
+                Agrupado por ramo, a mensalidade entra só com a caixinha do ramo e o saldo é gerencial.
               </p>
             ) : null}
           </article>

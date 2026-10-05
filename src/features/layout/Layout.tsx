@@ -7,13 +7,15 @@ import logo from "@/shared/assets/arno_logo.png";
 import { useAuth } from "@/features/auth";
 import { api } from "@/core/http";
 import { NAV_SECTIONS, type NavSection } from "@/features/layout/nav-links";
+import { useLoadFeeSchedule } from "@/features/fee-schedule/use-fee-schedule";
 import { duration, ease, pageTransition, pageVariants, pageVariantsReduced } from "@/shared/lib/motion";
 import type { Period } from "@/shared/hooks/use-period";
 import PeriodControl from "@/shared/ui/PeriodControl";
 import "@/shared/styles/layout.css";
 
 const SIDEBAR_KEY = "arno.sidebar-collapsed";
-const SECTIONS_KEY = "arno.sidebar-sections";
+// v2: seções reorganizadas e só uma aberta por vez (estado antigo é descartado).
+const SECTIONS_KEY = "arno.sidebar-sections.v2";
 
 function readCollapsed() {
   try {
@@ -27,22 +29,19 @@ function sectionMatchesPath(section: NavSection, pathname: string) {
   return section.items.some((link) => matchPath({ path: link.to, end: link.end ?? false }, pathname));
 }
 
+/** Abre a seção da tela atual; fora dela (ex.: tela sem link), volta à última seção aberta. */
 function readOpenSections(sectionIds: string[], activeId?: string): Record<string, boolean> {
-  try {
-    const raw = localStorage.getItem(SECTIONS_KEY);
-    if (raw) {
-      const saved = JSON.parse(raw) as Record<string, boolean>;
-      const next: Record<string, boolean> = {};
-      for (const id of sectionIds) {
-        next[id] = saved[id] ?? id === activeId;
-      }
-      if (activeId) next[activeId] = true;
-      return next;
+  let openId = activeId;
+  if (!openId) {
+    try {
+      const raw = localStorage.getItem(SECTIONS_KEY);
+      const saved = raw ? (JSON.parse(raw) as Record<string, boolean>) : {};
+      openId = sectionIds.find((id) => saved[id]);
+    } catch {
+      /* ignore */
     }
-  } catch {
-    /* ignore */
   }
-  return Object.fromEntries(sectionIds.map((id) => [id, id === activeId]));
+  return Object.fromEntries(sectionIds.map((id) => [id, id === openId]));
 }
 
 function persistOpenSections(open: Record<string, boolean>) {
@@ -55,6 +54,7 @@ function persistOpenSections(open: Record<string, boolean>) {
 
 export default function Layout({ year, month, setYear, setMonth }: Period) {
   const location = useLocation();
+  useLoadFeeSchedule();
   // Auditoria de uso: registra cada tela aberta (só a primeira parte do caminho, sem dados).
   const screen = `/${location.pathname.split("/")[1] ?? ""}`;
   useEffect(() => {
@@ -90,7 +90,7 @@ export default function Layout({ year, month, setYear, setMonth }: Period) {
         return next;
       }
       if (activeSectionId && !current[activeSectionId]) {
-        const next = { ...current, [activeSectionId]: true };
+        const next = { ...Object.fromEntries(ids.map((id) => [id, false])), [activeSectionId]: true };
         persistOpenSections(next);
         return next;
       }
@@ -110,9 +110,12 @@ export default function Layout({ year, month, setYear, setMonth }: Period) {
     });
   }
 
+  /** Uma seção aberta por vez: abrir uma recolhe as outras e a lista não fica longa. */
   function toggleSection(id: string) {
     setOpenSections((current) => {
-      const next = { ...current, [id]: !current[id] };
+      const opening = !current[id];
+      const next = Object.fromEntries(Object.keys({ ...current, [id]: true }).map((key) => [key, false]));
+      next[id] = opening;
       persistOpenSections(next);
       return next;
     });

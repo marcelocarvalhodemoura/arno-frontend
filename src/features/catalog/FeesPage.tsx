@@ -118,7 +118,7 @@ export default function Fees() {
       <PageHeader
         kicker="Cadastros"
         title="Taxas"
-        subtitle="Tabela oficial da mensalidade (base, extra de não sócio, pontualidade e atraso). Outras taxas do grupo continuam neste cadastro."
+        subtitle="Valores de referência para reconhecer pagamentos no extrato. Não alteram o cálculo da mensalidade."
         actions={
           <div className="page-head__actions">
             <PageGuide guide={feesGuide} />

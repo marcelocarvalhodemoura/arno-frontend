@@ -1,4 +1,5 @@
 import {
+  defaultClubFeeIncluded,
   expectedMensalidadeAmount,
   matchesMensalidadeAmount,
   paysMensalidade,
@@ -89,8 +90,9 @@ export function checkLaunch(input: LaunchCheckInput): LaunchCheck {
     if (!paysMensalidade(member)) {
       warnings.push(`${member.name} não paga mensalidade pelo cadastro (papel ou Clube da Flor de Lis).`);
     } else if (!matchesMensalidadeAmount(member, input.amount)) {
-      const onTime = expectedMensalidadeAmount(member, input.date, input.date, true);
-      const late = expectedMensalidadeAmount(member, input.date, nextDay(input.date), true);
+      const club = defaultClubFeeIncluded(member);
+      const onTime = expectedMensalidadeAmount(member, input.date, input.date, club);
+      const late = expectedMensalidadeAmount(member, input.date, nextDay(input.date), club);
       const table = onTime === late ? brl(onTime) : `${brl(onTime)} no prazo ou ${brl(late)} com atraso`;
       warnings.push(`Valor diferente da tabela de ${member.name} (${table}). Se inclui parcela de dívida, confirme.`);
     }
@@ -183,7 +185,8 @@ function formatBr(date: string): string {
 /** Valores da tabela para o mês, para mostrar ao lado do campo Valor. */
 export function mensalidadeTableHint(member: Member | null | undefined, date: string): string | null {
   if (!member || !date || !paysMensalidade(member)) return null;
-  const onTime = expectedMensalidadeAmount(member, date, date, true);
-  const late = expectedMensalidadeAmount(member, date, nextDay(date), true);
+  const club = defaultClubFeeIncluded(member);
+  const onTime = expectedMensalidadeAmount(member, date, date, club);
+  const late = expectedMensalidadeAmount(member, date, nextDay(date), club);
   return onTime === late ? `Tabela: ${brl(onTime)}` : `Tabela: ${brl(onTime)} no prazo · ${brl(late)} com atraso`;
 }

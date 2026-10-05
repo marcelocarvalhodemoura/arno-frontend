@@ -130,7 +130,7 @@ export default function Dashboard() {
           <StatCard
             title="Filhotes a Grupo"
             value={brl(data.byBranch.reduce((s, r) => s + r.income, 0))}
-            hint="Por ramo: mensalidade só com a caixinha (R$ 8)"
+            hint="Por ramo: mensalidade só com a caixinha do ramo"
           />
         </div>
 
@@ -278,7 +278,7 @@ export default function Dashboard() {
           <article className="card chart-card">
             <h3 style={{ marginBottom: 12 }}>Arrecadação por ramo</h3>
             <p className="muted" style={{ marginBottom: 12 }}>
-              Filhotes a Pioneiro e Grupo em {periodLabel}. Mensalidade: só a caixinha do ramo (R$ 8).
+              Filhotes a Pioneiro e Grupo em {periodLabel}. Mensalidade: só a caixinha do ramo.
             </p>
             <ResponsiveContainer width="100%" height={240}>
               <BarChart data={branchChart} layout="vertical" margin={{ left: 16 }}>
@@ -354,7 +354,8 @@ export default function Dashboard() {
           </ListingResults>
           <p className="muted" style={{ marginTop: 12 }}>
             * Associados com data de cadastro até {data.to.split("-").reverse().join("/")}, conforme o filtro de mês e
-            ano. Totais por ramo: mensalidade conta só a caixinha (R$ 8); demais lançamentos entram pelo valor integral.
+            ano. Totais por ramo: mensalidade conta só a caixinha do ramo (conforme a composição); demais lançamentos
+            entram pelo valor integral.
           </p>
         </article>
       </div>

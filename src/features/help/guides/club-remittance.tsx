@@ -37,10 +37,11 @@ export const clubRemittanceGuide: PageGuideContent = {
       body: (
         <>
           <p>
-            Taxa Lindóia: <strong>R$ 10</strong> se o pagamento foi até o vencimento, <strong>R$ 20</strong> se foi
-            depois. A diluição de R$ 4,50 fica com o grupo e não entra no repasse.
+            Taxa Lindóia: o valor <strong>no prazo</strong> se o pagamento foi até o vencimento, o valor{" "}
+            <strong>após o vencimento</strong> se foi depois — os dois definidos na Composição da mensalidade. A
+            diluição fica com o grupo e não entra no repasse.
           </p>
-          <p className="muted">Valor especial familiar e meses de março/abril não têm parcela destacável do clube.</p>
+          <p className="muted">Meses e perfis sem taxa do clube na composição não entram no repasse.</p>
         </>
       ),
     },

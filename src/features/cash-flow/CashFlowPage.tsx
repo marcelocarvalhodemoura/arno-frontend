@@ -21,6 +21,7 @@ import {
   paysMensalidade,
 } from "@/domain";
 import PageHeader from "@/shared/ui/PageHeader";
+import FeeCategoryBadge from "@/features/fee-schedule/FeeCategoryBadge";
 import Modal from "@/shared/ui/Modal";
 import { PageGuide, cashFlowGuide } from "@/features/help";
 import StatCard, { Badge } from "@/shared/ui/StatCard";
@@ -1855,6 +1856,9 @@ export default function CashFlow() {
                 />
                 {launchKind === "mensalidade" && mensalidadeTableHint(selectedMember, form.date) ? (
                   <small className="muted">{mensalidadeTableHint(selectedMember, form.date)}</small>
+                ) : null}
+                {launchKind === "mensalidade" && selectedMember && form.date ? (
+                  <FeeCategoryBadge profile={selectedMember} when={form.date} showPeriod />
                 ) : null}
               </label>
               <div className="field">

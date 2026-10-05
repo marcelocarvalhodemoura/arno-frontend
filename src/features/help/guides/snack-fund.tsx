@@ -4,7 +4,7 @@ export const snackFundGuide: PageGuideContent = {
   id: "snack-fund",
   title: "Como usar a taxa do lanche",
   intro:
-    "Cada mensalidade do cartaz (R$ 75) reserva R$ 24 para lanche. Esta tela mostra o que entrou, o que saiu e o saldo disponível — sem misturar a taxa do clube.",
+    "Cada mensalidade reserva uma parte para o lanche (definida na Composição da mensalidade). Esta tela mostra o que entrou, o que saiu e o saldo disponível — sem misturar a taxa do clube.",
   steps: [
     {
       id: "period",
@@ -27,10 +27,11 @@ export const snackFundGuide: PageGuideContent = {
       body: (
         <>
           <p>
-            Soma <strong>R$ 24</strong> por mensalidade <strong>paga no mês</strong> (data de pagamento), de maio a
-            novembro. Pioneiros, março/abril e valores especiais familiares não entram.
+            Soma a <strong>parte do lanche</strong> de cada mensalidade <strong>paga no mês</strong> (data de
+            pagamento). O valor de cada uma segue a composição do mês de vencimento e do perfil do associado — perfis
+            sem lanche na composição não entram.
           </p>
-          <p className="muted">A taxa Lindóia (R$ 10 / R$ 20) e a diluição de R$ 4,50 não fazem parte deste saldo.</p>
+          <p className="muted">A taxa do clube e a diluição não fazem parte deste saldo.</p>
         </>
       ),
     },

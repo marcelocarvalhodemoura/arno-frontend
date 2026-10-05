@@ -95,7 +95,10 @@ export const cashFlowGuide: PageGuideContent = {
           <ul>
             <li>
               <strong>Mensalidade</strong> pede o associado e o <strong>mês que a mensalidade quita</strong>. É esse mês
-              que fica pago na grade, mesmo que o Pix seja de outro mês. Ao lado do valor aparece a tabela do associado.
+              que fica pago na grade, mesmo que o Pix seja de outro mês. Abaixo do valor aparecem a tabela do associado
+              e a <strong>categoria da composição</strong> (ex.: <em>Demais ramos · não sócio</em>,{" "}
+              <em>Pioneiro · sócio Lindóia</em>, <em>Irmãos / filho de chefe</em>) com o período que vale naquele mês.
+              Passe o mouse na etiqueta para ver a divisão: grupo, caixinha, lanche, clube e diluição.
             </li>
             <li>
               <strong>Avisos em amarelo</strong> (valor fora da tabela, mensalidade do mesmo mês já existente, pagamento
