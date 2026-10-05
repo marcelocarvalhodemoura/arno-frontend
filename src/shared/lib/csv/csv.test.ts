@@ -188,7 +188,7 @@ describe("mapMemberRow", () => {
     }
   });
 
-  it("fills missing e-mail and groups two responsible rows of the same youth", () => {
+  it("rejects a youth without any e-mail instead of inventing one", () => {
     const mapped = mapMemberRow({
       nome: "Sem e-mail",
       email: "",
@@ -199,11 +199,36 @@ describe("mapMemberRow", () => {
       ingresso: "01/03/2026",
       clube_ltc: "não",
     });
-    expect(mapped.ok).toBe(true);
-    if (mapped.ok) {
-      expect(mapped.value.email).toContain("@arnofriedrich.org.br");
-    }
+    expect(mapped).toEqual({ ok: false, error: "Informe o e-mail de um responsável" });
+  });
 
+  it("uses the guardian e-mail below pioneiro and the own e-mail from pioneiro up", () => {
+    const base = {
+      telefone: "(51) 99999-0000",
+      papel: "jovem",
+      ingresso: "01/03/2026",
+      clube_ltc: "não",
+      email: "jovem@exemplo.com",
+      responsavel: "Helena Souza",
+      parentesco: "Mãe",
+      email_responsavel: "helena@exemplo.com",
+    };
+    const senior = mapMemberRow({ ...base, nome: "Ana Souza", ramo: "senior" });
+    const pioneiro = mapMemberRow({ ...base, nome: "Bia Souza", ramo: "pioneiro" });
+    expect(senior.ok && senior.value.email).toBe("helena@exemplo.com");
+    expect(pioneiro.ok && pioneiro.value.email).toBe("jovem@exemplo.com");
+
+    const siblings = mapMemberTable([
+      { ...base, nome: "Ana Souza", ramo: "lobinho", email: "" },
+      { ...base, nome: "Caio Souza", ramo: "escoteiro", email: "" },
+    ]);
+    expect(siblings.map((row) => row.mapped.ok && row.mapped.value.email)).toEqual([
+      "helena@exemplo.com",
+      "helena@exemplo.com",
+    ]);
+  });
+
+  it("groups two responsible rows of the same youth", () => {
     const table = mapMemberTable([
       {
         associado: "Ana Souza",
@@ -211,6 +236,7 @@ describe("mapMemberRow", () => {
         responsavel: "Helena Souza",
         parentesco: "Mãe",
         telefone: "(51) 99999-1002",
+        email_responsavel: "helena@exemplo.com",
       },
       {
         associado: "Ana Souza",

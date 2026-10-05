@@ -14,6 +14,7 @@ import {
 } from "@/domain";
 import PageHeader from "@/shared/ui/PageHeader";
 import FeeCategoryBadge from "@/features/fee-schedule/FeeCategoryBadge";
+import MensalidadeFormulaTable, { formulaText } from "./MensalidadeFormula";
 import StatCard, { Badge } from "@/shared/ui/StatCard";
 import { PageGuide, mensalidadesGuide } from "@/features/help";
 import PageLoader from "@/shared/ui/PageLoader";
@@ -652,14 +653,9 @@ export default function Mensalidades() {
                 ? " (valor especial: a taxa do clube não altera o total)"
                 : clubFeeHint(picked.row.branch, picked.cell.dueDate)}
             </p>
+            <MensalidadeFormulaTable cell={picked.cell} />
             {picked.cell.status !== "paid" ? (
               <>
-                <p className="muted">
-                  Pontual: {brl(picked.cell.onTimeAmount)}
-                  {picked.cell.lateAmount !== picked.cell.onTimeAmount
-                    ? ` · Com atraso: ${brl(picked.cell.lateAmount)}`
-                    : ""}
-                </p>
                 <label className="field">
                   <span>Data do pagamento</span>
                   <input type="date" value={paidAtDraft} onChange={(e) => setPaidAtDraft(e.target.value)} />
@@ -822,9 +818,14 @@ function FeeCell({ cell, onOpen }: { cell: MensalidadeCell; onOpen: () => void }
     <button
       type="button"
       className={`fee-cell fee-cell--${cell.status}`}
-      title={`${settlementLabel(cell.status)} · vencimento ${formatDate(cell.dueDate ?? "")}${
-        cell.clubFeeIncluded ? "" : " · sem taxa do clube"
-      }`}
+      title={[
+        `${settlementLabel(cell.status)} · vencimento ${formatDate(cell.dueDate ?? "")}${
+          cell.clubFeeIncluded ? "" : " · sem taxa do clube"
+        }`,
+        formulaText(cell),
+      ]
+        .filter(Boolean)
+        .join("\n")}
       onClick={onOpen}
     >
       <Badge kind={cell.status}>{settlementLabel(cell.status)}</Badge>

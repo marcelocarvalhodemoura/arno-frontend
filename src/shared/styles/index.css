@@ -4373,3 +4373,63 @@ form.is-attempted
 .fee-category__period {
   font-size: 0.72rem;
 }
+
+/* Fórmula da mensalidade do mês (detalhe na grade de mensalidades). */
+.fee-formula {
+  margin: 4px 0 12px;
+}
+
+.fee-formula__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+
+.fee-formula__table th,
+.fee-formula__table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+.fee-formula__table th {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.fee-formula__table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.fee-formula__table th.is-applied {
+  color: var(--forest);
+}
+
+.fee-formula__table tr.is-off td {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.fee-formula__table tr.is-subtotal td {
+  font-weight: 600;
+  border-top: 1px solid var(--forest);
+}
+
+.fee-formula__table tr.is-total td {
+  font-weight: 700;
+  border-bottom: none;
+}
+
+.fee-formula__note {
+  margin: 6px 0 0;
+  font-size: 0.78rem;
+}
+
+.fee-formula__warn {
+  color: var(--clay);
+}

@@ -136,6 +136,7 @@ export default function Members() {
   const [profileOf, setProfileOf] = useState<string | null>(null);
   const [form, setForm] = useState(emptyMember);
   const [guardians, setGuardians] = useState<GuardianDraft[]>([blankGuardian()]);
+  const ownsEmail = form.role !== "jovem" || form.branch === "pioneiro";
   const [error, setError] = useState<string | null>(null);
   const [branch, setBranch] = useState<YouthBranchId | "">("");
   const [query, setQuery] = useState("");
@@ -285,7 +286,7 @@ export default function Members() {
     const feeOverride = familyFeeOverride(form.discountKind, form.clubeLtc);
     const payload: Record<string, unknown> = {
       name: form.name,
-      email: form.email,
+      email: ownsEmail ? form.email : "",
       phone: form.phone,
       branch: form.branch,
       role: form.role,
@@ -649,9 +650,11 @@ export default function Members() {
               <label className="field">
                 <span>E-mail</span>
                 <input
-                  required
+                  required={ownsEmail}
                   type="email"
-                  value={form.email}
+                  value={ownsEmail ? form.email : ""}
+                  disabled={!ownsEmail}
+                  placeholder={ownsEmail ? undefined : "Usa o e-mail do responsável"}
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
                 />
               </label>
@@ -903,6 +906,7 @@ export default function Members() {
                         <span>E-mail</span>
                         <input
                           type="email"
+                          required={!ownsEmail && index === 0 && !guardians.some((item) => item.email.trim())}
                           value={guardian.email}
                           onChange={(e) => patchGuardian(index, { email: e.target.value })}
                         />

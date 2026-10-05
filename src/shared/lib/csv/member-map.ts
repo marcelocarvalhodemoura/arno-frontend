@@ -2,7 +2,14 @@ import { onTimeMonthlyFee, type YouthBranchId } from "@/domain";
 import { fold } from "@/shared/lib/csv/fold";
 import { pick } from "@/shared/lib/csv/parser";
 import type { MapOk, MapResult, MemberImportRow } from "@/shared/lib/csv/types";
-import { optionalContactEmail, parseBranch, parseIsoDate, parseRelationship, parseRole, parseYesNo } from "@/shared/lib/csv/values";
+import {
+  optionalContactEmail,
+  parseBranch,
+  parseIsoDate,
+  parseRelationship,
+  parseRole,
+  parseYesNo,
+} from "@/shared/lib/csv/values";
 
 type GuardianImport = NonNullable<MemberImportRow["guardians"]>[number];
 
@@ -151,7 +158,7 @@ export function collapseMappedMembers(
       leftovers.push(row);
       continue;
     }
-    const key = `${fold(row.mapped.value.name)}|${row.mapped.value.branch}|${row.mapped.value.email.toLowerCase()}`;
+    const key = `${fold(row.mapped.value.name)}|${row.mapped.value.branch}`;
     const current = merged.get(key);
     if (!current) {
       merged.set(key, { line: row.line, mapped: { ok: true, value: { ...row.mapped.value } } });
@@ -163,16 +170,7 @@ export function collapseMappedMembers(
 }
 
 function memberNameOf(row: Record<string, string>) {
-  return pick(
-    row,
-    "associado",
-    "jovem",
-    "nome_do_jovem",
-    "nome_associado",
-    "nome_do_associado",
-    "nome",
-    "name",
-  );
+  return pick(row, "associado", "jovem", "nome_do_jovem", "nome_associado", "nome_do_associado", "nome", "name");
 }
 
 function memberEmailOf(row: Record<string, string>) {
@@ -211,27 +209,15 @@ function todayIso() {
   return new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
 }
 
-function slugName(value: string) {
-  return fold(value).replace(/[^a-z0-9]+/g, ".").replace(/^\.|\.$/g, "") || "associado";
+/** Pioneiros e adultos usam o próprio e-mail; os ramos abaixo usam o do responsável. */
+function contactEmail(raw: string, branch: YouthBranchId, role: string, guardians: GuardianImport[]) {
+  const own = optionalContactEmail(raw).toLowerCase();
+  if (role !== "jovem" || branch === "pioneiro") return own;
+  const guardian = guardians.map((item) => optionalContactEmail(item.email)).find(Boolean);
+  return (guardian ?? own).toLowerCase();
 }
 
-function ensureMemberEmail(raw: string, name: string, branch: YouthBranchId, used: Set<string>) {
-  const preferred = raw.toLowerCase().trim();
-  if (preferred.includes("@") && !used.has(preferred)) {
-    used.add(preferred);
-    return preferred;
-  }
-  let candidate = `import.${slugName(name)}.${branch}@arnofriedrich.org.br`;
-  let index = 2;
-  while (used.has(candidate)) {
-    candidate = `import.${slugName(name)}.${branch}${index}@arnofriedrich.org.br`;
-    index += 1;
-  }
-  used.add(candidate);
-  return candidate;
-}
-
-function mapMemberCluster(rows: Record<string, string>[], usedEmails: Set<string>): MapResult<MemberImportRow> {
+function mapMemberCluster(rows: Record<string, string>[]): MapResult<MemberImportRow> {
   const merged: Record<string, string> = {};
   for (const row of rows) {
     for (const [key, value] of Object.entries(row)) {
@@ -265,7 +251,16 @@ function mapMemberCluster(rows: Record<string, string>[], usedEmails: Set<string
   if (clubeLtc === null) return { ok: false, error: "Clube LTC deve ser sim ou não" };
   if (phone.replace(/\D/g, "").length < 8) return { ok: false, error: "Telefone inválido" };
 
-  const email = ensureMemberEmail(memberEmailOf(merged), name, branch, usedEmails);
+  const email = contactEmail(memberEmailOf(merged), branch, role, guardians);
+  if (!email) {
+    return {
+      ok: false,
+      error:
+        role !== "jovem" || branch === "pioneiro"
+          ? "Informe o e-mail do associado"
+          : "Informe o e-mail de um responsável",
+    };
+  }
 
   return {
     ok: true,
@@ -284,7 +279,7 @@ function mapMemberCluster(rows: Record<string, string>[], usedEmails: Set<string
 }
 
 export function mapMemberRow(row: Record<string, string>): MapResult<MemberImportRow> {
-  return mapMemberCluster([row], new Set());
+  return mapMemberCluster([row]);
 }
 
 export function mapMemberTable(rows: Record<string, string>[]): { line: number; mapped: MapResult<MemberImportRow> }[] {
@@ -300,9 +295,8 @@ export function mapMemberTable(rows: Record<string, string>[]): { line: number; 
     }
     groups.set(key, { line: index + 2, rows: [row] });
   });
-  const usedEmails = new Set<string>();
   return [...groups.values()].map((group) => ({
     line: group.line,
-    mapped: mapMemberCluster(group.rows, usedEmails),
+    mapped: mapMemberCluster(group.rows),
   }));
 }
