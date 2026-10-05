@@ -4,7 +4,7 @@ import { FaExpand, FaTimes } from "react-icons/fa";
 import { api } from "@/core/http";
 import { duration, ease } from "@/shared/lib/motion";
 
-type NotaMeta = {
+export type NotaMeta = {
   url: string;
   fileName: string;
   contentType: string;
@@ -13,6 +13,8 @@ type NotaMeta = {
 type Props = {
   transactionId: string;
   fileName?: string;
+  /** Outra origem do arquivo (ex.: comprovante do WhatsApp); padrão: nota do lançamento. */
+  load?: () => Promise<NotaMeta>;
   onClose: () => void;
 };
 
@@ -21,7 +23,7 @@ export async function fetchNotaAmpliada(transactionId: string): Promise<NotaMeta
   return api<NotaMeta>(`/transactions/${transactionId}/nota`);
 }
 
-export default function NotaViewer({ transactionId, fileName, onClose }: Props) {
+export default function NotaViewer({ transactionId, fileName, load, onClose }: Props) {
   const [meta, setMeta] = useState<NotaMeta | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -38,7 +40,7 @@ export default function NotaViewer({ transactionId, fileName, onClose }: Props) 
     let cancelled = false;
     setLoading(true);
     setError(null);
-    void fetchNotaAmpliada(transactionId)
+    void (load ? load() : fetchNotaAmpliada(transactionId))
       .then((data) => {
         if (!cancelled) setMeta(data);
       })
@@ -53,6 +55,7 @@ export default function NotaViewer({ transactionId, fileName, onClose }: Props) 
     return () => {
       cancelled = true;
     };
+    // `load` muda a cada render; o id basta para saber quando buscar de novo.
   }, [transactionId]);
 
   const title = meta?.fileName || fileName || "Nota";

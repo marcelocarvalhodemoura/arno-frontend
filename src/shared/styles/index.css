@@ -4433,3 +4433,80 @@ form.is-attempted
 .fee-formula__warn {
   color: var(--clay);
 }
+
+/* Comprovantes recebidos pelo WhatsApp */
+.proof-reason {
+  white-space: pre-line;
+  font-size: 0.82rem;
+  margin-top: 4px;
+}
+
+.proof-row-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.proof-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px 18px;
+  margin: 0 0 12px;
+}
+
+.proof-facts dt {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.proof-facts dd {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.proof-facts__mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+}
+
+.proof-choice {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 10px 14px 12px;
+  margin: 12px 0 0;
+}
+
+.proof-choice legend {
+  padding: 0 6px;
+  font-weight: 600;
+}
+
+.proof-option {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px 6px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.proof-option:hover {
+  background: rgba(12, 45, 107, 0.04);
+}
+
+.proof-option span {
+  display: flex;
+  flex-direction: column;
+}
+
+.proof-option.is-exact {
+  box-shadow: inset 3px 0 0 var(--moss);
+}
+
+.proof-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}

@@ -8,6 +8,7 @@ import {
   FaCookieBite,
   FaExchangeAlt,
   FaFileImport,
+  FaFileInvoiceDollar,
   FaFlag,
   FaHandHoldingUsd,
   FaHome,
@@ -20,6 +21,7 @@ import {
   FaUserShield,
   FaUsers,
   FaWallet,
+  FaWhatsapp,
 } from "react-icons/fa";
 import type { IconType } from "react-icons";
 import type { UserRole } from "@/domain";
@@ -30,6 +32,8 @@ export type NavLinkItem = {
   icon: IconType;
   end?: boolean;
   roles: UserRole[];
+  /** Contador ao lado do link (pendências da tela). */
+  badge?: "proofs";
 };
 
 export type NavSection = {
@@ -62,6 +66,14 @@ export const NAV_SECTIONS: NavSection[] = [
     icon: FaCalendarCheck,
     items: [
       { to: "/mensalidades", label: "Mensalidade", icon: FaCalendarCheck, roles: ["admin", "tesoureiro"] },
+      { to: "/cobranca-whatsapp", label: "Cobrança no WhatsApp", icon: FaWhatsapp, roles: ["admin", "tesoureiro"] },
+      {
+        to: "/comprovantes",
+        label: "Comprovantes",
+        icon: FaFileInvoiceDollar,
+        roles: ["admin", "tesoureiro"],
+        badge: "proofs",
+      },
       { to: "/dividas", label: "Dívidas", icon: FaHandHoldingUsd, roles: ["admin", "tesoureiro"] },
       { to: "/repasse-clube", label: "Repasse ao clube", icon: FaExchangeAlt, roles: ["admin", "tesoureiro"] },
       { to: "/taxa-lanche", label: "Taxa do lanche", icon: FaCookieBite, roles: ["admin", "tesoureiro"] },

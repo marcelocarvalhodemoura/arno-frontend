@@ -5,6 +5,8 @@ export { membersGuide } from "@/features/help/guides/members";
 export { mensalidadesGuide } from "@/features/help/guides/mensalidades";
 export { clubRemittanceGuide } from "@/features/help/guides/club-remittance";
 export { snackFundGuide } from "@/features/help/guides/snack-fund";
+export { whatsappChargeGuide } from "@/features/help/guides/whatsapp-charge";
+export { comprovantesGuide } from "@/features/help/guides/comprovantes";
 export { integrationGuide } from "@/features/help/guides/integration";
 export { dashboardGuide } from "@/features/help/guides/dashboard";
 export { arrearsGuide } from "@/features/help/guides/arrears";

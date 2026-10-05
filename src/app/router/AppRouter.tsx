@@ -14,6 +14,8 @@ import IntegrationPage from "@/features/integration/IntegrationPage";
 import Layout from "@/features/layout/Layout";
 import MembersPage from "@/features/members/MembersPage";
 import MensalidadesPage from "@/features/mensalidades/MensalidadesPage";
+import WhatsAppChargePage from "@/features/mensalidades/WhatsAppChargePage";
+import ComprovantesPage from "@/features/comprovantes/ComprovantesPage";
 import ClubRemittancePage from "@/features/club-remittance/ClubRemittancePage";
 import SnackFundPage from "@/features/snack-fund/SnackFundPage";
 import ArrearsPage from "@/features/arrears/ArrearsPage";
@@ -69,6 +71,8 @@ export function AppRouter() {
               />
               <Route path="fluxo" element={<CashFlowPage />} />
               <Route path="mensalidades" element={<MensalidadesPage />} />
+              <Route path="cobranca-whatsapp" element={<WhatsAppChargePage />} />
+              <Route path="comprovantes" element={<ComprovantesPage />} />
               <Route path="repasse-clube" element={<ClubRemittancePage />} />
               <Route path="taxa-lanche" element={<SnackFundPage />} />
               <Route path="dividas" element={<ArrearsPage />} />

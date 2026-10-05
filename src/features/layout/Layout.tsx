@@ -60,6 +60,13 @@ export default function Layout({ year, month, setYear, setMonth }: Period) {
   useEffect(() => {
     void api("/audit/page", { method: "POST", body: JSON.stringify({ path: screen }) }).catch(() => undefined);
   }, [screen]);
+  // Comprovantes do WhatsApp esperando a tesouraria: atualiza a cada troca de tela.
+  const [proofsPending, setProofsPending] = useState(0);
+  useEffect(() => {
+    void api<{ review: number }>("/comprovantes/resumo")
+      .then((data) => setProofsPending(data.review))
+      .catch(() => undefined);
+  }, [screen]);
   const reduceMotion = useReducedMotion();
   const { user, name, role, logout } = useAuth();
   const sections = NAV_SECTIONS.map((section) => ({
@@ -221,6 +228,11 @@ export default function Layout({ year, month, setYear, setMonth }: Period) {
                           >
                             <link.icon />
                             <span className="side-link__label">{link.label}</span>
+                            {link.badge === "proofs" && proofsPending > 0 ? (
+                              <span className="side-link__badge" aria-label={`${proofsPending} para conferir`}>
+                                {proofsPending}
+                              </span>
+                            ) : null}
                           </NavLink>
                         ))}
                       </div>
