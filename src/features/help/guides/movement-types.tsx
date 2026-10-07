@@ -31,6 +31,28 @@ export const movementTypesGuide: PageGuideContent = {
       ),
     },
     {
+      id: "audience",
+      title: "Público interno ou externo",
+      body: (
+        <>
+          <ul>
+            <li>
+              <strong>Público interno</strong> (Acampamento, Indaba, Bivaque, Acantonamento): toda entrada pede o
+              associado que pagou, e o relatório com o tipo filtrado lista os associados pagantes.
+            </li>
+            <li>
+              <strong>Público externo</strong> (Festival do Sorvete, Noite do Hambúrguer, Pastelada, Chá das Mães):
+              venda para a comunidade, sem associado. O relatório mostra o resultado de cada evento (arrecadado menos
+              gasto).
+            </li>
+            <li>
+              <strong>Não se aplica</strong>: sede, material, alimentação e demais rubricas sem essa distinção.
+            </li>
+          </ul>
+        </>
+      ),
+    },
+    {
       id: "edit",
       title: "Alterar e excluir",
       body: (

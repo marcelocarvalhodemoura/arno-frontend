@@ -72,6 +72,7 @@ import {
   mensalidadeTableHint,
   competenceDate,
   launchKindOf,
+  launchMemberField,
   launchSummary,
 } from "@/features/cash-flow/launch-form";
 import {
@@ -477,6 +478,7 @@ export default function CashFlow() {
 
   const selectedMovement = (types.data ?? []).find((item) => item.id === form.movementTypeId);
   const launchKind = launchKindOf(selectedMovement?.name);
+  const memberField = launchMemberField(launchKind, selectedMovement?.audience, form.type);
   const dueDay = settings.data?.mensalidadeDueDay ?? 10;
   const launchDescription =
     launchKind === "mensalidade" && descAuto
@@ -484,6 +486,7 @@ export default function CashFlow() {
       : form.description;
   const launchCheck = checkLaunch({
     kind: launchKind,
+    memberField,
     movementTypeId: form.movementTypeId,
     typeChosen: Boolean(selectedMovement) && !isUnidentifiedName(selectedMovement?.name),
     amount: parseMoney(form.amount) || 0,
@@ -515,6 +518,10 @@ export default function CashFlow() {
       paidAt: form.paymentStatus === "paid" ? form.paidAt || form.date : form.paidAt,
       branch,
       projectId: form.projectId || suggestProjectId(movementTypeId, branch),
+      // Público externo vende para a comunidade: o lançamento não fica preso a um associado.
+      ...(launchMemberField(kind, next?.audience, type) === "hidden"
+        ? { memberId: "", memberAccountId: "", memberGuardianId: "" }
+        : {}),
     });
     setWarningsAck(false);
   }
@@ -534,9 +541,14 @@ export default function CashFlow() {
   }
 
   function renderLaunchMember(required: boolean) {
+    const label = !required
+      ? "Associado (opcional)"
+      : launchKind === "other" && form.type === "income"
+        ? "Associado que pagou"
+        : "Associado";
     return (
       <label className="field">
-        <span>{required ? "Associado" : "Associado (opcional)"}</span>
+        <span>{label}</span>
         <SearchableSelect
           required={required}
           value={form.memberId}
@@ -1818,7 +1830,7 @@ export default function CashFlow() {
                   </div>
                 </div>
               ) : null}
-              {launchKind !== "other" ? renderLaunchMember(true) : null}
+              {memberField === "required" ? renderLaunchMember(true) : null}
               {launchKind === "mensalidade" ? (
                 <label className="field">
                   <span>Mês que a mensalidade quita</span>
@@ -1915,7 +1927,7 @@ export default function CashFlow() {
                   </span>
                 </summary>
                 <div className="form-grid">
-                  {launchKind === "other" ? renderLaunchMember(false) : null}
+                  {memberField === "optional" ? renderLaunchMember(false) : null}
                   {launchKind === "mensalidade" ? (
                     <label className="field wide">
                       <span>Descrição</span>

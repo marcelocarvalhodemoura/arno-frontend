@@ -2,6 +2,7 @@ export { brl, chartMoney, signedClass } from "./money";
 export { formatCompactDateTime, formatDate, formatDateTime, monthLabel, MONTHS, todayISO } from "./date";
 export {
   auditAction,
+  audienceLabel,
   directionLabel,
   holderKindLabel,
   methodLabel,

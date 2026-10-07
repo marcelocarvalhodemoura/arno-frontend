@@ -4,6 +4,7 @@ import {
   matchesMensalidadeAmount,
   paysMensalidade,
   type Member,
+  type MovementAudience,
   type TxPaymentStatus,
   type TxType,
 } from "@/domain";
@@ -19,6 +20,20 @@ export function launchKindOf(typeName?: string | null): LaunchKind {
   const key = foldName(typeName);
   if (key.includes("acordo") || key.includes("divida")) return "agreement";
   return "other";
+}
+
+/** Campo Associado: obrigatório, opcional ou fora do formulário. */
+export type LaunchMemberField = "required" | "optional" | "hidden";
+
+/**
+ * Mensalidade e dívida sempre pedem associado. Tipo de público interno (acampamento, bivaque) pede quem pagou
+ * nas entradas; público externo (festival, pastelada) vende para a comunidade e dispensa o campo.
+ */
+export function launchMemberField(kind: LaunchKind, audience?: MovementAudience, type?: TxType): LaunchMemberField {
+  if (kind !== "other") return "required";
+  if (audience === "external") return "hidden";
+  if (audience === "internal" && type === "income") return "required";
+  return "optional";
 }
 
 /** Vencimento da mensalidade do mês (AAAA-MM) no dia configurado, limitado ao fim do mês. */
@@ -52,6 +67,8 @@ type ExistingTx = {
 
 export type LaunchCheckInput = {
   kind: LaunchKind;
+  /** Padrão: obrigatório fora de "other", como em launchMemberField. */
+  memberField?: LaunchMemberField;
   movementTypeId: string;
   typeChosen: boolean;
   amount: number;
@@ -76,8 +93,15 @@ export function checkLaunch(input: LaunchCheckInput): LaunchCheck {
   if (!input.typeChosen) errors.push("Escolha o que é este lançamento.");
   if (!(input.amount > 0)) errors.push("Informe o valor.");
   if (input.description.trim().length < 2) errors.push("Descreva o lançamento.");
-  if (kind !== "other" && !member) {
-    errors.push(kind === "mensalidade" ? "Escolha o associado da mensalidade." : "Escolha o associado da dívida.");
+  const memberField = input.memberField ?? (kind === "other" ? "optional" : "required");
+  if (memberField === "required" && !member) {
+    errors.push(
+      kind === "mensalidade"
+        ? "Escolha o associado da mensalidade."
+        : kind === "agreement"
+          ? "Escolha o associado da dívida."
+          : "Escolha o associado que pagou.",
+    );
   }
   if (!input.date) errors.push(kind === "mensalidade" ? "Escolha o mês que a mensalidade quita." : "Informe a data.");
   if (input.paymentStatus === "paid" && !input.paidAt) errors.push("Informe quando foi pago.");

@@ -5,6 +5,7 @@ import {
   checkLaunch,
   competenceDate,
   launchKindOf,
+  launchMemberField,
   launchSummary,
   mensalidadeTableHint,
   type LaunchCheckInput,
@@ -47,6 +48,21 @@ describe("launchKindOf", () => {
   });
 });
 
+describe("launchMemberField", () => {
+  it("pede associado em mensalidade, dívida e entrada de público interno", () => {
+    expect(launchMemberField("mensalidade")).toBe("required");
+    expect(launchMemberField("agreement", "external", "income")).toBe("required");
+    expect(launchMemberField("other", "internal", "income")).toBe("required");
+  });
+
+  it("deixa opcional na saída interna e nos tipos gerais; esconde no público externo", () => {
+    expect(launchMemberField("other", "internal", "expense")).toBe("optional");
+    expect(launchMemberField("other", "general", "income")).toBe("optional");
+    expect(launchMemberField("other", undefined, "income")).toBe("optional");
+    expect(launchMemberField("other", "external", "income")).toBe("hidden");
+  });
+});
+
 describe("competenceDate", () => {
   it("usa o dia de vencimento e respeita o fim do mês", () => {
     expect(competenceDate("2026-05", 10)).toBe("2026-05-10");
@@ -65,6 +81,12 @@ describe("checkLaunch", () => {
     expect(result.errors).toContain("Escolha o que é este lançamento.");
     expect(result.errors).toContain("Informe o valor.");
     expect(result.errors).toContain("Escolha o associado da mensalidade.");
+  });
+
+  it("exige quem pagou na entrada de público interno", () => {
+    const base = { kind: "other" as const, description: "Bivaque", memberField: "required" as const };
+    expect(checkLaunch(input({ ...base, member: null })).errors).toContain("Escolha o associado que pagou.");
+    expect(checkLaunch(input({ ...base, memberField: "hidden", member: null })).errors).toEqual([]);
   });
 
   it("exige data de pagamento quando já foi pago", () => {

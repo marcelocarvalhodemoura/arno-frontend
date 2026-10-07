@@ -7,11 +7,13 @@ import {
   type BranchId,
   type CustomReportQuery,
   type CustomReportRow,
+  type EventResultRow,
   type FiscalLedgerLine,
   type MovementType,
   type ReportGroupBy,
   type TxNature,
   type TxType,
+  type TypePayers,
 } from "@/domain";
 import PageHeader from "@/shared/ui/PageHeader";
 import { PageGuide, reportsGuide } from "@/features/help";
@@ -42,6 +44,7 @@ import { matchesQuery, usePagedList } from "@/shared/lib/listing";
 import { periodRange, usePeriod } from "@/shared/lib/period";
 import { GROUP_BY_LABELS, REPORT_GROUPS, REPORTS, periodPresets, type ReportDef } from "./report-catalog";
 import { ReportClosing, ReportLetterhead, SummaryBars } from "./ReportPrint";
+import { joinCsvBlocks, reportSectionsCsv } from "./report-csv";
 
 type CustomResult = {
   rows: CustomReportRow[];
@@ -49,6 +52,8 @@ type CustomResult = {
   ledger: FiscalLedgerLine[];
   opening: number;
   closing: number;
+  events: EventResultRow[];
+  payers: TypePayers[];
 };
 
 type DelinquencyResult = {
@@ -258,7 +263,7 @@ export default function Reports() {
             Líquido: row.net,
             Lançamentos: row.count,
           }));
-      downloadCsv(name, toCsv(rows));
+      downloadCsv(name, joinCsvBlocks([toCsv(rows), ...reportSectionsCsv(result.data.events, result.data.payers)]));
     } else if (result.kind === "delinquency") {
       downloadCsv(
         name,
@@ -485,6 +490,8 @@ export default function Reports() {
                               onChange={() => toggle(movementTypeIds, t.id, setMovementTypeIds)}
                             />
                             {t.name}
+                            {t.audience === "internal" ? <span className="muted"> · interno</span> : null}
+                            {t.audience === "external" ? <span className="muted"> · externo</span> : null}
                           </label>
                         ))}
                       </div>
@@ -694,6 +701,11 @@ export default function Reports() {
                     </ListingResults>
                   </article>
 
+                  {result.data.events.length ? <EventResultsView rows={result.data.events} /> : null}
+                  {result.data.payers.map((group) => (
+                    <TypePayersView key={group.movementTypeId} data={group} />
+                  ))}
+
                   {showLedger ? (
                     <article className="card report-section">
                       <div className="report-section__head">
@@ -818,6 +830,149 @@ export default function Reports() {
         </div>
       </div>
     </div>
+  );
+}
+
+/** Público externo: cada evento com o que entrou, o que saiu e o resultado. */
+function EventResultsView({ rows }: { rows: EventResultRow[] }) {
+  const total = rows.reduce(
+    (acc, row) => ({
+      income: acc.income + row.income,
+      expense: acc.expense + row.expense,
+      net: acc.net + row.net,
+      count: acc.count + row.count,
+    }),
+    { income: 0, expense: 0, net: 0, count: 0 },
+  );
+  return (
+    <article className="card report-section">
+      <div className="report-section__head">
+        <h3>Resultado dos eventos (público externo)</h3>
+        <span className="muted">{rows.length} evento(s)</span>
+      </div>
+      <div className="table-wrap">
+        <table className="data report-summary">
+          <thead>
+            <tr>
+              <th scope="col">Evento</th>
+              <th scope="col" className="num">
+                Arrecadado
+              </th>
+              <th scope="col" className="num">
+                Gasto
+              </th>
+              <th scope="col" className="num">
+                Resultado
+              </th>
+              <th scope="col" className="num">
+                Qtd.
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.movementTypeId}>
+                <td>{row.name}</td>
+                <td className="num is-pos">{brl(row.income)}</td>
+                <td className="num is-neg">{brl(row.expense)}</td>
+                <td className={`num ${row.net >= 0 ? "is-pos" : "is-neg"}`}>
+                  <strong>{brl(row.net)}</strong>
+                </td>
+                <td className="num">{row.count}</td>
+              </tr>
+            ))}
+          </tbody>
+          {rows.length > 1 ? (
+            <tfoot>
+              <tr className="is-total">
+                <td>
+                  <strong>Total dos eventos</strong>
+                </td>
+                <td className="num">
+                  <strong>{brl(total.income)}</strong>
+                </td>
+                <td className="num">
+                  <strong>{brl(total.expense)}</strong>
+                </td>
+                <td className="num">
+                  <strong>{brl(total.net)}</strong>
+                </td>
+                <td className="num">
+                  <strong>{total.count}</strong>
+                </td>
+              </tr>
+            </tfoot>
+          ) : null}
+        </table>
+      </div>
+    </article>
+  );
+}
+
+/** Público interno escolhido no filtro: quem pagou, quanto e quando. */
+function TypePayersView({ data }: { data: TypePayers }) {
+  return (
+    <article className="card report-section">
+      <div className="report-section__head">
+        <h3>Associados pagantes · {data.name}</h3>
+        <span className="muted">{data.payers.length} associado(s)</span>
+      </div>
+      <div className="table-wrap">
+        <table className="data report-summary">
+          <thead>
+            <tr>
+              <th scope="col">Associado</th>
+              <th scope="col">Ramo</th>
+              <th scope="col">Último pagamento</th>
+              <th scope="col" className="num">
+                Pagamentos
+              </th>
+              <th scope="col" className="num">
+                Valor pago
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.payers.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="muted">
+                  Nenhuma entrada deste tipo vinculada a associado no período.
+                </td>
+              </tr>
+            ) : (
+              data.payers.map((payer) => (
+                <tr key={payer.memberId}>
+                  <td>{payer.name}</td>
+                  <td>{BRANCH_LABELS[payer.branch]}</td>
+                  <td>{formatDate(payer.lastDate)}</td>
+                  <td className="num">{payer.count}</td>
+                  <td className="num is-pos">{brl(payer.amount)}</td>
+                </tr>
+              ))
+            )}
+            {data.unlinked.count ? (
+              <tr>
+                <td colSpan={3} className="muted">
+                  Sem associado vinculado (identifique no fluxo de caixa)
+                </td>
+                <td className="num">{data.unlinked.count}</td>
+                <td className="num is-pos">{brl(data.unlinked.amount)}</td>
+              </tr>
+            ) : null}
+          </tbody>
+          <tfoot>
+            <tr className="is-total">
+              <td colSpan={4}>
+                <strong>Total recebido</strong>
+              </td>
+              <td className="num">
+                <strong>{brl(data.total)}</strong>
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </article>
   );
 }
 

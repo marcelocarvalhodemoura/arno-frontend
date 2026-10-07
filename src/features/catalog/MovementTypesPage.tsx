@@ -1,5 +1,12 @@
 import { useMemo, useState, type FormEvent } from "react";
-import { ALL_BRANCHES, BRANCH_LABELS, type BranchId, type MovementDirection, type MovementType } from "@/domain";
+import {
+  ALL_BRANCHES,
+  BRANCH_LABELS,
+  type BranchId,
+  type MovementAudience,
+  type MovementDirection,
+  type MovementType,
+} from "@/domain";
 import RecordStamp from "@/shared/ui/RecordStamp";
 import PageHeader from "@/shared/ui/PageHeader";
 import { PageGuide, movementTypesGuide } from "@/features/help";
@@ -17,7 +24,7 @@ import { AnimatePresence } from "framer-motion";
 import { FaBan, FaCheck, FaPen } from "react-icons/fa";
 import { api } from "@/core/http";
 import { useToast } from "@/shared/feedback/toast";
-import { directionLabel } from "@/shared/lib/format";
+import { audienceLabel, directionLabel } from "@/shared/lib/format";
 import { matchesQuery, usePagedList } from "@/shared/lib/listing";
 import { formClass, submitAttempt } from "@/shared/lib/form";
 import { useFetch } from "@/shared/hooks/use-fetch";
@@ -29,9 +36,16 @@ type TypeView = MovementType & {
   updatedByUser?: { name: string; username?: string } | null;
 };
 
+const AUDIENCE_OPTIONS: { value: MovementAudience; label: string }[] = [
+  { value: "general", label: "Não se aplica" },
+  { value: "internal", label: "Público interno (associados: acampamento, bivaque…)" },
+  { value: "external", label: "Público externo (comunidade: festival, pastelada…)" },
+];
+
 const empty = {
   name: "",
   direction: "income" as MovementDirection,
+  audience: "general" as MovementAudience,
   description: "",
   pixKey: "",
   branch: "grupo" as BranchId,
@@ -51,6 +65,7 @@ export default function MovementTypes() {
   const [directionFilter, setDirectionFilter] = useState<MovementDirection | "">("");
   const [statusFilter, setStatusFilter] = useState<"active" | "inactive" | "">("");
   const [branchFilter, setBranchFilter] = useState<BranchId | "">("");
+  const [audienceFilter, setAudienceFilter] = useState<MovementAudience | "">("");
 
   const types = list.data ?? [];
   const filtered = useMemo(
@@ -60,17 +75,22 @@ export default function MovementTypes() {
         if (statusFilter === "active" && !type.active) return false;
         if (statusFilter === "inactive" && type.active) return false;
         if (branchFilter && (type.branch ?? "grupo") !== branchFilter) return false;
+        if (audienceFilter && (type.audience ?? "general") !== audienceFilter) return false;
         return matchesQuery(query, [
           type.name,
           type.description,
           type.pixKey,
           directionLabel(type.direction),
+          audienceLabel(type.audience),
           BRANCH_LABELS[type.branch ?? "grupo"],
         ]);
       }),
-    [types, query, directionFilter, statusFilter, branchFilter],
+    [types, query, directionFilter, statusFilter, branchFilter, audienceFilter],
   );
-  const listing = usePagedList(filtered, [query, directionFilter, statusFilter, branchFilter].join("|"));
+  const listing = usePagedList(
+    filtered,
+    [query, directionFilter, statusFilter, branchFilter, audienceFilter].join("|"),
+  );
 
   function openCreate() {
     setEditing(null);
@@ -85,6 +105,7 @@ export default function MovementTypes() {
     setForm({
       name: type.name,
       direction: type.direction,
+      audience: type.audience ?? "general",
       description: type.description,
       pixKey: type.pixKey ?? "",
       branch: type.branch ?? "grupo",
@@ -196,6 +217,20 @@ export default function MovementTypes() {
               />
             </label>
             <label className="field">
+              <span>Público</span>
+              <SearchableSelect
+                value={audienceFilter}
+                onChange={(value) => setAudienceFilter(value as MovementAudience | "")}
+                placeholder="Todos"
+                options={[
+                  { value: "", label: "Todos" },
+                  { value: "internal", label: "Público interno" },
+                  { value: "external", label: "Público externo" },
+                  { value: "general", label: "Não se aplica" },
+                ]}
+              />
+            </label>
+            <label className="field">
               <span>Situação</span>
               <SearchableSelect
                 value={statusFilter}
@@ -217,11 +252,12 @@ export default function MovementTypes() {
                   <th>Ramo</th>
                   <th>Pix</th>
                   <th>Direção</th>
+                  <th>Público</th>
                   <th>Situação</th>
                   <th className="cell-actions">Ações</th>
                 </tr>
               </thead>
-              <AnimatedTableBody emptyColSpan={6} emptyMessage="Nenhum tipo com esses filtros.">
+              <AnimatedTableBody emptyColSpan={7} emptyMessage="Nenhum tipo com esses filtros.">
                 {listing.pageRows.map((type, index) => (
                   <AnimatedRow key={type.id} index={index} flash={flashId === type.id}>
                     <td>
@@ -242,6 +278,7 @@ export default function MovementTypes() {
                         {directionLabel(type.direction)}
                       </Badge>
                     </td>
+                    <td>{audienceLabel(type.audience)}</td>
                     <td>
                       <Badge kind={type.active ? "paid" : "inactive"}>{type.active ? "Ativo" : "Inativo"}</Badge>
                     </td>
@@ -315,6 +352,23 @@ export default function MovementTypes() {
                     label: id === "grupo" ? "Grupo (todos os ramos)" : BRANCH_LABELS[id],
                   }))}
                 />
+              </label>
+              <label className="field">
+                <span>Público</span>
+                <SearchableSelect
+                  required
+                  value={form.audience}
+                  placeholder="Selecione"
+                  onChange={(value) => setForm({ ...form, audience: value as MovementAudience })}
+                  options={AUDIENCE_OPTIONS}
+                />
+                <small className="muted">
+                  {form.audience === "internal"
+                    ? "Entradas pedem o associado que pagou; o relatório lista os pagantes."
+                    : form.audience === "external"
+                      ? "Vendas para a comunidade, sem associado; o relatório mostra o resultado do evento."
+                      : "Sem regra de associado."}
+                </small>
               </label>
               <label className="field">
                 <span>Chave Pix</span>

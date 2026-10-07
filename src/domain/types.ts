@@ -9,6 +9,8 @@ export type TxNature = "fixed" | "variable";
 export type PaymentMethod = "pix" | "cash" | "transfer" | "card" | "other";
 export type TxPaymentStatus = "paid" | "pending";
 export type MovementDirection = "income" | "expense" | "both";
+/** Para quem é a atividade: internal = associados (acampamento, bivaque), external = comunidade (festival, pastelada). */
+export type MovementAudience = "internal" | "external" | "general";
 export type AccountHolderKind = "parent" | "youth" | "other";
 export type GuardianRelationship =
   | "Mãe"
@@ -198,6 +200,8 @@ export interface MovementType {
   id: string;
   name: string;
   direction: MovementDirection;
+  /** Ausente = general (não se aplica). */
+  audience?: MovementAudience;
   description: string;
   pixKey: string;
   branch: BranchId;
@@ -505,6 +509,25 @@ export interface CustomReportRow {
   expense: number;
   net: number;
   count: number;
+}
+
+/** Resultado de um tipo de público externo: o que entrou menos o que saiu. */
+export interface EventResultRow {
+  movementTypeId: string;
+  name: string;
+  income: number;
+  expense: number;
+  net: number;
+  count: number;
+}
+
+/** Quem pagou um tipo de público interno escolhido no filtro do relatório. */
+export interface TypePayers {
+  movementTypeId: string;
+  name: string;
+  payers: { memberId: string; name: string; branch: BranchId; amount: number; count: number; lastDate: string }[];
+  total: number;
+  unlinked: { amount: number; count: number };
 }
 
 export interface FiscalLedgerLine {

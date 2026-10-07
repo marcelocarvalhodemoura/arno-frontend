@@ -73,6 +73,14 @@ export function directionLabel(direction: string): string {
   return map[direction] ?? direction;
 }
 
+export function audienceLabel(audience?: string | null): string {
+  const map: Record<string, string> = {
+    internal: "Público interno",
+    external: "Público externo",
+  };
+  return map[audience ?? ""] ?? "Não se aplica";
+}
+
 export function typeLabel(type: string): string {
   return type === "income" ? "Entrada" : "Saída";
 }
