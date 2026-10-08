@@ -8,6 +8,7 @@ import {
   type MovementType,
 } from "@/domain";
 import RecordStamp from "@/shared/ui/RecordStamp";
+import AudienceBadge from "@/shared/ui/AudienceBadge";
 import PageHeader from "@/shared/ui/PageHeader";
 import { PageGuide, movementTypesGuide } from "@/features/help";
 import Modal from "@/shared/ui/Modal";
@@ -278,7 +279,9 @@ export default function MovementTypes() {
                         {directionLabel(type.direction)}
                       </Badge>
                     </td>
-                    <td>{audienceLabel(type.audience)}</td>
+                    <td>
+                      <AudienceBadge audience={type.audience} />
+                    </td>
                     <td>
                       <Badge kind={type.active ? "paid" : "inactive"}>{type.active ? "Ativo" : "Inativo"}</Badge>
                     </td>
