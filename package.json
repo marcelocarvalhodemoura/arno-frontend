@@ -11,7 +11,9 @@
     "test:unit": "vitest run",
     "test:watch": "vitest",
     "precommit": "lint-staged && npm run test:unit",
-    "prepare": "husky"
+    "prepare": "husky",
+    "sync:contract": "node scripts/sync-contract.mjs",
+    "check:contract": "node scripts/sync-contract.mjs --check"
   },
   "dependencies": {
     "framer-motion": "^12.23.22",
