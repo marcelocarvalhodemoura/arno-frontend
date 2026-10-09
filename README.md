@@ -41,3 +41,13 @@ O hook do Husky roda no `git commit`: Prettier nos arquivos staged (`lint-staged
 npm run prepare   # ativa o hook (já roda no npm install)
 npm run precommit # mesmo fluxo, manualmente
 ```
+
+## Contrato compartilhado com o backend
+
+`src/contract/` é uma cópia gerada de `arno-backend/src/contract`: tipos comuns, regras da mensalidade, `Money` e
+`Competencia`. Não edite esses arquivos; altere no backend e rode:
+
+```bash
+npm run sync:contract     # backend em ../arno-backend (ou ARNO_BACKEND_DIR=/caminho/do/arno-backend)
+npm run check:contract    # confere a cópia (roda no CI)
+```

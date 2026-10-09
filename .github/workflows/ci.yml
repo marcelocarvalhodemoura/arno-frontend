@@ -25,6 +25,9 @@ jobs:
       - name: Dependências
         run: npm ci
 
+      - name: Contrato compartilhado com o backend
+        run: npm run check:contract
+
       - name: Testes
         run: npm run test:unit
 
