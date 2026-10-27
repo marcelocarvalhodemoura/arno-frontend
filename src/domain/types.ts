@@ -499,6 +499,8 @@ export interface CustomReportQuery {
   types: TxType[];
   natures: TxNature[];
   movementTypeIds: string[];
+  /** Só lançamentos destes associados (vazio = todos). */
+  memberIds?: string[];
   groupBy: ReportGroupBy;
 }
 

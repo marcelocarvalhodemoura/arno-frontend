@@ -137,7 +137,14 @@ export interface AssemblyReport {
   income: number;
   expense: number;
   result: number;
-  byBranch: { branch: BranchId; label: string; income: number; expense: number }[];
+  /** Para onde foi cada real (grupo, ramos, lanche, clube, a conferir), mesma divisão do Extrato dos ramos. */
+  destinations: {
+    from: string | null;
+    until: string | null;
+    rows: { bucket: string; label: string; opening: number; income: number; expense: number; balance: number }[];
+    total: number;
+    cashBalance: number;
+  };
   byType: { name: string; type: TxType; amount: number }[];
   delinquency: { count: number; members: number; amount: number; rate: number };
 }

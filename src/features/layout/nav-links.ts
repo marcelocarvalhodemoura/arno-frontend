@@ -1,5 +1,6 @@
 import {
   FaAddressBook,
+  FaBalanceScale,
   FaCalendarCheck,
   FaChartBar,
   FaChartLine,
@@ -16,6 +17,7 @@ import {
   FaPaperPlane,
   FaPercentage,
   FaReceipt,
+  FaSitemap,
   FaThLarge,
   FaUserSecret,
   FaUserShield,
@@ -58,6 +60,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { to: "/fluxo", label: "Fluxo de caixa", icon: FaChartLine, roles: ["admin", "tesoureiro"] },
       { to: "/integracao", label: "Integrações", icon: FaFileImport, roles: ["admin", "tesoureiro"] },
+      { to: "/extrato-ramos", label: "Extrato dos ramos", icon: FaSitemap, roles: ["admin", "tesoureiro"] },
     ],
   },
   {
@@ -77,6 +80,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { to: "/dividas", label: "Dívidas", icon: FaHandHoldingUsd, roles: ["admin", "tesoureiro"] },
       { to: "/repasse-clube", label: "Repasse ao clube", icon: FaExchangeAlt, roles: ["admin", "tesoureiro"] },
       { to: "/taxa-lanche", label: "Taxa do lanche", icon: FaCookieBite, roles: ["admin", "tesoureiro"] },
+      { to: "/conferencia", label: "Conferência", icon: FaBalanceScale, roles: ["admin", "tesoureiro"] },
     ],
   },
   {

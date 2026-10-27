@@ -15,6 +15,7 @@ import {
 import PageHeader from "@/shared/ui/PageHeader";
 import FeeCategoryBadge from "@/features/fee-schedule/FeeCategoryBadge";
 import MensalidadeFormulaTable, { formulaText } from "./MensalidadeFormula";
+import PaidAllocation from "@/features/allocations/PaidAllocation";
 import StatCard, { Badge } from "@/shared/ui/StatCard";
 import { PageGuide, mensalidadesGuide } from "@/features/help";
 import PageLoader from "@/shared/ui/PageLoader";
@@ -654,6 +655,9 @@ export default function Mensalidades() {
                 : clubFeeHint(picked.row.branch, picked.cell.dueDate)}
             </p>
             <MensalidadeFormulaTable cell={picked.cell} />
+            {picked.cell.status === "paid" && picked.cell.transactionId ? (
+              <PaidAllocation transactionId={picked.cell.transactionId} />
+            ) : null}
             {picked.cell.status !== "paid" ? (
               <>
                 <label className="field">

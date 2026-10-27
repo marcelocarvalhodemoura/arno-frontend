@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   ALL_BRANCHES,
   BRANCH_LABELS,
@@ -11,7 +11,6 @@ import {
   type FiscalLedgerLine,
   type MovementType,
   type ReportGroupBy,
-  type TxNature,
   type TxType,
   type TypePayers,
 } from "@/domain";
@@ -22,10 +21,8 @@ import RecordStamp from "@/shared/ui/RecordStamp";
 import PageLoader from "@/shared/ui/PageLoader";
 import FetchOverlay from "@/shared/ui/FetchOverlay";
 import ListingResults from "@/shared/ui/ListingResults";
-import SubmitButton from "@/shared/ui/SubmitButton";
 import FilterBar from "@/shared/ui/FilterBar";
 import Pager from "@/shared/ui/Pager";
-import SearchableSelect from "@/shared/ui/SearchableSelect";
 import { api } from "@/core/http";
 import { useAuth } from "@/features/auth";
 import { useLoadingBar } from "@/shared/feedback/loading";
@@ -42,9 +39,17 @@ import {
 } from "@/shared/lib/format";
 import { matchesQuery, usePagedList } from "@/shared/lib/listing";
 import { periodRange, usePeriod } from "@/shared/lib/period";
-import { GROUP_BY_LABELS, REPORT_GROUPS, REPORTS, periodPresets, type ReportDef } from "./report-catalog";
+import {
+  GROUP_BY_LABELS,
+  REPORT_GROUPS,
+  REPORTS,
+  periodPresets,
+  reportFromParam,
+  type ReportDef,
+} from "./report-catalog";
 import { ReportClosing, ReportLetterhead, SummaryBars } from "./ReportPrint";
 import { joinCsvBlocks, reportSectionsCsv } from "./report-csv";
+import ReportBuilder, { builderTitle, type BuilderState } from "./ReportBuilder";
 
 type CustomResult = {
   rows: CustomReportRow[];
@@ -80,38 +85,58 @@ type Result =
 
 const ALL_LABEL = "Todos (sem filtro)";
 
+const DIRECTIONS: { label: string; types: TxType[] }[] = [
+  { label: "Entradas e saídas", types: [] },
+  { label: "Só entradas", types: ["income"] },
+  { label: "Só saídas", types: ["expense"] },
+];
+
+function sameTypes(a: TxType[], b: TxType[]) {
+  return a.length === b.length && a.every((item) => b.includes(item));
+}
+
 /** Central de relatórios: catálogo, período, filtros e o mesmo papel timbrado na impressão. */
 export default function Reports() {
   const { year, month } = usePeriod();
   const { name: issuerName, user: issuerUser } = useAuth();
   const { start, stop } = useLoadingBar();
+  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
-  const initial = REPORTS.find((item) => item.id === params.get("modelo")) ?? REPORTS[0]!;
+  const initial = reportFromParam(params.get("modelo"));
   const range = periodRange(year, month);
 
-  const [report, setReport] = useState<ReportDef>(initial);
+  const [report, setReport] = useState<ReportDef>(initial.report);
   const [from, setFrom] = useState(range.from);
   const [to, setTo] = useState(range.to);
   const [branches, setBranches] = useState<BranchId[]>([]);
-  const [types, setTypes] = useState<TxType[]>(initial.types ?? []);
-  const [natures, setNatures] = useState<TxNature[]>([]);
+  const [types, setTypes] = useState<TxType[]>(initial.types ?? initial.report.types ?? []);
   const [movementTypeIds, setMovementTypeIds] = useState<string[]>([]);
-  const [groupBy, setGroupBy] = useState<ReportGroupBy>(initial.groupBy ?? "movementType");
-  const [showLedger, setShowLedger] = useState(Boolean(initial.ledgerByDefault));
+  const [memberIds, setMemberIds] = useState<string[]>([]);
+  const [templateName, setTemplateName] = useState<string | null>(null);
+  const [groupBy, setGroupBy] = useState<ReportGroupBy>(initial.groupBy ?? initial.report.groupBy ?? "movementType");
+  const [showLedger, setShowLedger] = useState(Boolean(initial.report.ledgerByDefault));
   const [movementTypes, setMovementTypes] = useState<MovementType[]>([]);
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [dirty, setDirty] = useState(false);
   const [issuedAt, setIssuedAt] = useState("");
   const [printing, setPrinting] = useState(false);
   const [summaryQuery, setSummaryQuery] = useState("");
   const [ledgerQuery, setLedgerQuery] = useState("");
-  const [runKey, setRunKey] = useState(1);
+  const [movementTypesLoaded, setMovementTypesLoaded] = useState(false);
 
   useEffect(() => {
-    void api<MovementType[]>("/movement-types").then(setMovementTypes);
+    void api<MovementType[]>("/movement-types")
+      .then(setMovementTypes)
+      .finally(() => setMovementTypesLoaded(true));
   }, []);
+
+  /** Tipos já filtrados pelo modelo (ex.: "A identificar") somados aos escolhidos na tela. */
+  const presetTypeIds = useMemo(() => {
+    const names = (report.presetTypeNames ?? []).map((name) => name.toLowerCase());
+    return movementTypes.filter((t) => names.includes(t.name.toLowerCase())).map((t) => t.id);
+  }, [report, movementTypes]);
+  const waitsForTypes = Boolean(report.presetTypeNames?.length) && !movementTypesLoaded;
 
   useEffect(() => {
     if (!printing) return;
@@ -124,33 +149,61 @@ export default function Reports() {
     };
   }, [printing]);
 
-  // Trocar de relatório ou de período pelos atalhos já gera de novo.
+  // Qualquer mudança de modelo, período ou filtro atualiza o relatório sozinha (com uma pausa para digitar datas).
+  const queryKey = JSON.stringify([
+    report.id,
+    from,
+    to,
+    branches,
+    types,
+    movementTypeIds,
+    memberIds,
+    presetTypeIds,
+    groupBy,
+  ]);
   useEffect(() => {
-    if (runKey) void run();
+    if (waitsForTypes) return;
+    const timer = window.setTimeout(() => void run(), 350);
+    return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runKey]);
+  }, [queryKey, waitsForTypes]);
 
   function selectReport(next: ReportDef) {
+    if (next.to) {
+      navigate(next.to);
+      return;
+    }
     setReport(next);
     setTypes(next.types ?? []);
     setGroupBy(next.groupBy ?? "movementType");
+    setMovementTypeIds([]);
+    setMemberIds([]);
+    setTemplateName(null);
     setShowLedger(Boolean(next.ledgerByDefault));
     setSummaryQuery("");
     setLedgerQuery("");
     setParams({ modelo: next.id }, { replace: true });
     setResult(null);
-    setRunKey((key) => key + 1);
+  }
+
+  function applyBuilder(patch: Partial<BuilderState>) {
+    if (patch.from !== undefined) setFrom(patch.from);
+    if (patch.to !== undefined) setTo(patch.to);
+    if (patch.types) setTypes(patch.types);
+    if (patch.groupBy) setGroupBy(patch.groupBy);
+    if (patch.branches) setBranches(patch.branches);
+    if (patch.movementTypeIds) setMovementTypeIds(patch.movementTypeIds);
+    if (patch.memberIds) setMemberIds(patch.memberIds);
+    if (patch.showLedger !== undefined) setShowLedger(patch.showLedger);
   }
 
   function choosePeriod(nextFrom: string, nextTo: string) {
     setFrom(nextFrom);
     setTo(nextTo);
-    setRunKey((key) => key + 1);
   }
 
   function toggle<T extends string>(list: T[], value: T, setter: (v: T[]) => void) {
     setter(list.includes(value) ? list.filter((x) => x !== value) : [...list, value]);
-    setDirty(true);
   }
 
   async function run() {
@@ -163,7 +216,16 @@ export default function Reports() {
     start();
     try {
       if (report.kind === "custom") {
-        const query: CustomReportQuery = { from, to, branches, types, natures, movementTypeIds, groupBy };
+        const query: CustomReportQuery = {
+          from,
+          to,
+          branches,
+          types,
+          natures: [],
+          movementTypeIds: [...new Set([...presetTypeIds, ...movementTypeIds])],
+          memberIds,
+          groupBy,
+        };
         const data = await api<CustomResult>("/reports/custom", { method: "POST", body: JSON.stringify(query) });
         setResult({ kind: "custom", data });
       } else if (report.kind === "assembly") {
@@ -175,7 +237,6 @@ export default function Reports() {
         });
       }
       setIssuedAt(new Date().toISOString());
-      setDirty(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Não foi possível gerar o relatório");
     } finally {
@@ -187,7 +248,6 @@ export default function Reports() {
   const filterSummary = {
     branches: branches.length ? branches.map((id) => BRANCH_LABELS[id]).join(", ") : ALL_LABEL,
     types: types.length ? types.map(typeLabel).join(", ") : "Entradas e saídas",
-    natures: natures.length ? natures.map(natureLabel).join(", ") : "Fixas e variáveis",
     movementTypes: movementTypeIds.length
       ? movementTypes
           .filter((t) => movementTypeIds.includes(t.id))
@@ -198,7 +258,6 @@ export default function Reports() {
   const activeFilters = [
     branches.length ? `${branches.length} ramo(s)` : "",
     !report.types && types.length === 1 ? typeLabel(types[0]!) : "",
-    natures.length === 1 ? natureLabel(natures[0]!) : "",
     movementTypeIds.length ? `${movementTypeIds.length} tipo(s)` : "",
   ].filter(Boolean);
 
@@ -242,7 +301,7 @@ export default function Reports() {
             Data: formatDate(line.date),
             Direção: typeLabel(line.type),
             Natureza: natureLabel(line.nature),
-            "Tipo de conta": line.movementType,
+            "Tipo de movimentação": line.movementType,
             Ramo: BRANCH_LABELS[line.branch],
             Associado: line.memberName ?? "",
             Responsável: line.guardianName ?? "",
@@ -285,11 +344,13 @@ export default function Reports() {
       downloadCsv(
         name,
         toCsv([
-          ...result.data.byBranch.map((row) => ({
-            Bloco: "Ramo",
+          ...result.data.destinations.rows.map((row) => ({
+            Bloco: "Destino",
             Nome: row.label,
+            "Saldo anterior": row.opening,
             Entradas: row.income,
             Saídas: row.expense,
+            Saldo: row.balance,
           })),
           ...result.data.byType.map((row) => ({
             Bloco: "Tipo",
@@ -303,6 +364,10 @@ export default function Reports() {
   }
 
   const issuer = `${issuerName ?? "Tesouraria"}${issuerUser ? ` (@${issuerUser})` : ""}`;
+  // No montador, o título do documento sai das escolhas (ou do nome do modelo aberto).
+  const documentTitle = report.builder
+    ? (templateName ?? builderTitle({ from, to, types, groupBy, branches, movementTypeIds, memberIds, showLedger }))
+    : report.documentTitle;
 
   return (
     <div className="fiscal-report">
@@ -325,9 +390,6 @@ export default function Reports() {
               >
                 {printing ? "Preparando…" : "Imprimir / PDF"}
               </button>
-              <SubmitButton type="button" busy={busy} busyLabel="Gerando…" onClick={() => void run()}>
-                Gerar relatório
-              </SubmitButton>
             </div>
           }
         />
@@ -346,7 +408,10 @@ export default function Reports() {
                   aria-current={item.id === report.id ? "page" : undefined}
                   onClick={() => selectReport(item)}
                 >
-                  <strong>{item.label}</strong>
+                  <strong>
+                    {item.label}
+                    {item.to ? <span aria-hidden="true"> ↗</span> : null}
+                  </strong>
                   <span>{item.summary}</span>
                 </button>
               ))}
@@ -371,46 +436,66 @@ export default function Reports() {
             <div className="report-config__row">
               <label className="field">
                 <span>De</span>
-                <input
-                  type="date"
-                  value={from}
-                  onChange={(e) => {
-                    setFrom(e.target.value);
-                    setDirty(true);
-                  }}
-                />
+                <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
               </label>
               <label className="field">
                 <span>Até</span>
-                <input
-                  type="date"
-                  value={to}
-                  onChange={(e) => {
-                    setTo(e.target.value);
-                    setDirty(true);
-                  }}
-                />
+                <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
               </label>
-              {report.kind === "custom" ? (
-                <label className="field">
-                  <span>Agrupar por</span>
-                  <SearchableSelect
-                    value={groupBy}
-                    onChange={(value) => {
-                      setGroupBy(value as ReportGroupBy);
-                      setDirty(true);
-                    }}
-                    placeholder="Selecione"
-                    options={(Object.keys(GROUP_BY_LABELS) as ReportGroupBy[]).map((key) => ({
-                      value: key,
-                      label: GROUP_BY_LABELS[key],
-                    }))}
-                  />
-                </label>
-              ) : null}
             </div>
 
-            {report.kind === "custom" ? (
+            {report.builder ? (
+              <ReportBuilder
+                from={from}
+                to={to}
+                types={types}
+                groupBy={groupBy}
+                branches={branches}
+                movementTypeIds={movementTypeIds}
+                memberIds={memberIds}
+                showLedger={showLedger}
+                movementTypes={movementTypes}
+                onChange={applyBuilder}
+                onTemplate={setTemplateName}
+              />
+            ) : null}
+
+            {report.views || report.chooseDirection ? (
+              <div className="report-views">
+                {report.views ? (
+                  <div className="report-presets" role="group" aria-label="Ver por">
+                    <span className="muted">Ver por</span>
+                    {report.views.map((view) => (
+                      <button
+                        key={view}
+                        type="button"
+                        className={`flag ${groupBy === view ? "is-on" : ""}`}
+                        onClick={() => setGroupBy(view)}
+                      >
+                        {GROUP_BY_LABELS[view]}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                {report.chooseDirection ? (
+                  <div className="report-presets" role="group" aria-label="Mostrar">
+                    <span className="muted">Mostrar</span>
+                    {DIRECTIONS.map((option) => (
+                      <button
+                        key={option.label}
+                        type="button"
+                        className={`flag ${sameTypes(types, option.types) ? "is-on" : ""}`}
+                        onClick={() => setTypes(option.types)}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {report.kind === "custom" && !report.builder ? (
               <>
                 <details className="report-filters">
                   <summary>
@@ -435,52 +520,8 @@ export default function Reports() {
                         ))}
                       </div>
                     </div>
-                    {!report.types ? (
-                      <div className="field">
-                        <span>Direção</span>
-                        <div className="check-row">
-                          <label>
-                            <input
-                              type="checkbox"
-                              checked={types.includes("income")}
-                              onChange={() => toggle(types, "income", setTypes)}
-                            />
-                            Entradas
-                          </label>
-                          <label>
-                            <input
-                              type="checkbox"
-                              checked={types.includes("expense")}
-                              onChange={() => toggle(types, "expense", setTypes)}
-                            />
-                            Saídas
-                          </label>
-                        </div>
-                      </div>
-                    ) : null}
-                    <div className="field">
-                      <span>Natureza</span>
-                      <div className="check-row">
-                        <label>
-                          <input
-                            type="checkbox"
-                            checked={natures.includes("fixed")}
-                            onChange={() => toggle(natures, "fixed", setNatures)}
-                          />
-                          Fixa
-                        </label>
-                        <label>
-                          <input
-                            type="checkbox"
-                            checked={natures.includes("variable")}
-                            onChange={() => toggle(natures, "variable", setNatures)}
-                          />
-                          Variável
-                        </label>
-                      </div>
-                    </div>
                     <div className="field wide">
-                      <span>Tipos de conta</span>
+                      <span>Tipos de movimentação</span>
                       <div className="check-row">
                         {movementTypes.map((t) => (
                           <label key={t.id}>
@@ -506,14 +547,6 @@ export default function Reports() {
             ) : null}
 
             {error ? <div className="error">{error}</div> : null}
-            {dirty ? (
-              <p className="report-dirty">Filtros ou período alterados: clique em Gerar relatório para atualizar.</p>
-            ) : null}
-            {groupBy === "branch" && report.kind === "custom" ? (
-              <p className="muted">
-                Agrupado por ramo, a mensalidade entra só com a caixinha do ramo e o saldo é gerencial.
-              </p>
-            ) : null}
           </article>
 
           {busy && !result ? <PageLoader label="Gerando relatório…" /> : null}
@@ -522,7 +555,7 @@ export default function Reports() {
             <FetchOverlay active={busy} label="Gerando relatório…">
               <ReportLetterhead
                 purpose={report.purpose}
-                documentTitle={report.documentTitle}
+                documentTitle={documentTitle}
                 from={from}
                 to={to}
                 issuedAt={issuedAt}
@@ -534,8 +567,10 @@ export default function Reports() {
                         ["Ramos", filterSummary.branches],
                         ["Direção", filterSummary.types],
                         ["Agrupado por", GROUP_BY_LABELS[groupBy]],
-                        ["Natureza", filterSummary.natures],
-                        ["Tipos de conta", filterSummary.movementTypes],
+                        ["Tipos de movimentação", filterSummary.movementTypes],
+                        ...(memberIds.length
+                          ? [["Associados", `${memberIds.length} selecionado(s)`] as [string, string]]
+                          : []),
                         ["Emitido por", `${issuer}${issuedAt ? ` · ${formatDateTime(issuedAt)}` : ""}`],
                       ]
                     : [
@@ -544,6 +579,8 @@ export default function Reports() {
                       ]
                 }
               />
+
+              <ResultSentence result={result} from={from} to={to} />
 
               {result.kind === "custom" ? (
                 <>
@@ -600,7 +637,7 @@ export default function Reports() {
 
                   <article className="card report-section">
                     <div className="report-section__head">
-                      <h3>Síntese por {GROUP_BY_LABELS[groupBy].toLowerCase()}</h3>
+                      <h3>Por {GROUP_BY_LABELS[groupBy].toLowerCase()}</h3>
                       <span className="muted">{result.data.rows.length} grupo(s)</span>
                     </div>
                     {groupBy !== "none" ? <SummaryBars rows={result.data.rows} mode={barMode} /> : null}
@@ -762,8 +799,7 @@ export default function Reports() {
                                     {line.movementType}
                                     {line.memberName ? ` · ${line.memberName}` : ""}
                                     {line.guardianName ? ` · resp. ${line.guardianName}` : ""}
-                                    {line.accountHolder ? ` · conta ${line.accountHolder}` : ""} ·{" "}
-                                    {natureLabel(line.nature)}
+                                    {line.accountHolder ? ` · conta ${line.accountHolder}` : ""}
                                   </div>
                                   <div className="no-print">
                                     <RecordStamp
@@ -1008,6 +1044,93 @@ function SingleDirectionKpis({
   );
 }
 
+/** Resultado em uma frase, antes dos números: o que a pessoa quer saber primeiro. */
+function ResultSentence({ result, from, to }: { result: Result; from: string; to: string }) {
+  const period = `De ${formatDate(from)} a ${formatDate(to)}`;
+  let text: string;
+  if (result.kind === "delinquency") {
+    const { members, count, amount } = result.data.totals;
+    text = members
+      ? `${period}, ${members} associado(s) ficaram devendo ${count} mensalidade(s), somando ${brl(amount)}.`
+      : `${period}, ninguém ficou devendo mensalidade.`;
+  } else {
+    const income = result.kind === "custom" ? result.data.totals.income : result.data.income;
+    const expense = result.kind === "custom" ? result.data.totals.expense : result.data.expense;
+    const closing = result.kind === "custom" ? result.data.closing : result.data.closingBalance;
+    const net = income - expense;
+    const parts = [income ? `entraram ${brl(income)}` : "", expense ? `saíram ${brl(expense)}` : ""].filter(Boolean);
+    if (!parts.length) text = `${period}, não houve movimentação com esses filtros.`;
+    else if (income && expense)
+      text = `${period}, ${parts.join(" e ")}: ${net >= 0 ? `sobraram ${brl(net)}` : `faltaram ${brl(-net)}`}.`;
+    else text = `${period}, ${parts[0]}.`;
+    if (result.kind === "assembly" || (result.kind === "custom" && income && expense)) {
+      text += ` O caixa terminou o período com ${brl(closing)}.`;
+    }
+  }
+  return <p className="report-sentence">{text}</p>;
+}
+
+/** Cada real do caixa num destino só (mesma divisão do Extrato dos ramos); a soma é o saldo final. */
+function DestinationsView({ data }: { data: AssemblyReport }) {
+  const rows = data.destinations.rows.filter((row) => row.opening || row.income || row.expense || row.balance);
+  const closes = Math.abs(data.destinations.total - data.closingBalance) < 0.01;
+  return (
+    <article className="card report-section">
+      <div className="report-section__head">
+        <h3>Para onde foi cada real</h3>
+      </div>
+      <p className="muted">
+        A mensalidade é dividida como foi gravada no pagamento: a parte operacional fica no caixa do grupo, a caixinha
+        vai para o ramo do jovem, o lanche para o fundo do lanche e a taxa do clube fica reservada até o repasse.
+      </p>
+      <div className="table-wrap">
+        <table className="data">
+          <thead>
+            <tr>
+              <th>Destino</th>
+              <th className="num">Saldo anterior</th>
+              <th className="num">Entradas</th>
+              <th className="num">Saídas</th>
+              <th className="num">Saldo em {formatDate(data.to)}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.bucket}>
+                <td>{row.label}</td>
+                <td className="num">{brl(row.opening)}</td>
+                <td className="num is-pos">{brl(row.income)}</td>
+                <td className="num is-neg">{brl(row.expense)}</td>
+                <td className="num">{brl(row.balance)}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="is-total">
+              <td>
+                <strong>Total</strong>
+                {closes ? null : <span className="error"> · não bate com o saldo final do caixa</span>}
+              </td>
+              <td className="num">
+                <strong>{brl(rows.reduce((sum, row) => sum + row.opening, 0))}</strong>
+              </td>
+              <td className="num">
+                <strong>{brl(rows.reduce((sum, row) => sum + row.income, 0))}</strong>
+              </td>
+              <td className="num">
+                <strong>{brl(rows.reduce((sum, row) => sum + row.expense, 0))}</strong>
+              </td>
+              <td className="num">
+                <strong>{brl(data.destinations.total)}</strong>
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </article>
+  );
+}
+
 function AssemblyView({ data }: { data: AssemblyReport }) {
   return (
     <>
@@ -1043,45 +1166,10 @@ function AssemblyView({ data }: { data: AssemblyReport }) {
           </tr>
         </tbody>
       </table>
-      <article className="card report-section">
-        <div className="report-section__head">
-          <h3>Entradas e saídas por ramo</h3>
-        </div>
-        <SummaryBars
-          rows={data.byBranch.map((row) => ({
-            key: row.branch,
-            label: row.label,
-            income: row.income,
-            expense: row.expense,
-          }))}
-          mode="both"
-        />
-        <div className="table-wrap">
-          <table className="data">
-            <thead>
-              <tr>
-                <th>Ramo</th>
-                <th className="num">Entradas</th>
-                <th className="num">Saídas</th>
-                <th className="num">Resultado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.byBranch.map((row) => (
-                <tr key={row.branch}>
-                  <td>{row.label}</td>
-                  <td className="num is-pos">{brl(row.income)}</td>
-                  <td className="num is-neg">{brl(row.expense)}</td>
-                  <td className="num">{brl(row.income - row.expense)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </article>
+      <DestinationsView data={data} />
       <div className="report-cols">
         <article className="card report-section">
-          <h3>Principais tipos de conta</h3>
+          <h3>Principais tipos de movimentação</h3>
           <table className="data">
             <tbody>
               {data.byType.slice(0, 10).map((row) => (

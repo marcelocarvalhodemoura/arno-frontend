@@ -18,6 +18,8 @@ import WhatsAppChargePage from "@/features/mensalidades/WhatsAppChargePage";
 import ComprovantesPage from "@/features/comprovantes/ComprovantesPage";
 import ClubRemittancePage from "@/features/club-remittance/ClubRemittancePage";
 import SnackFundPage from "@/features/snack-fund/SnackFundPage";
+import ConferencePage from "@/features/allocations/ConferencePage";
+import BranchLedgerPage from "@/features/branch-ledger/BranchLedgerPage";
 import ArrearsPage from "@/features/arrears/ArrearsPage";
 import ProjectsPage from "@/features/projects/ProjectsPage";
 import ReportsPage from "@/features/reports/ReportsPage";
@@ -75,6 +77,8 @@ export function AppRouter() {
               <Route path="comprovantes" element={<ComprovantesPage />} />
               <Route path="repasse-clube" element={<ClubRemittancePage />} />
               <Route path="taxa-lanche" element={<SnackFundPage />} />
+              <Route path="conferencia" element={<ConferencePage />} />
+              <Route path="extrato-ramos" element={<BranchLedgerPage />} />
               <Route path="dividas" element={<ArrearsPage />} />
               <Route path="integracao" element={<IntegrationPage />} />
               <Route path="tipos" element={<MovementTypesPage />} />

@@ -1,11 +1,19 @@
 import type { ReportGroupBy, TxType } from "@/domain";
 
-export type ReportKind = "custom" | "assembly" | "delinquency";
+export type ReportKind = "custom" | "assembly" | "delinquency" | "link";
+
+export const REPORT_GROUPS = [
+  "Prestar contas",
+  "Acompanhar o caixa",
+  "Ramos e associados",
+  "Conferir",
+  "Montar relatório",
+] as const;
 
 export type ReportDef = {
   id: string;
   kind: ReportKind;
-  group: "Prestação de contas" | "Movimentação" | "Pessoas e ramos";
+  group: (typeof REPORT_GROUPS)[number];
   label: string;
   /** Uma linha no catálogo: para que serve. */
   summary: string;
@@ -14,20 +22,41 @@ export type ReportDef = {
   documentTitle: string;
   csvPrefix: string;
   groupBy?: ReportGroupBy;
-  /** Direção fixa do relatório (Entradas ou Saídas); vazio = as duas. */
+  /** Abas "Ver por" (a primeira é a padrão); sem abas, o agrupamento é fixo. */
+  views?: ReportGroupBy[];
+  /** Direção fixa do relatório (Entradas ou Saídas); vazio = escolhe na tela. */
   types?: TxType[];
+  /** Mostra a escolha Entradas e saídas / Só entradas / Só saídas. */
+  chooseDirection?: boolean;
+  /** Tipos de movimentação já filtrados, pelo nome (ex.: "A identificar"). */
+  presetTypeNames?: string[];
   showSignatures?: boolean;
   /** Livro-caixa detalhado aparece por padrão (a comissão fiscal precisa dele). */
   ledgerByDefault?: boolean;
+  /** Relatório que tem tela própria: o catálogo leva até ela. */
+  to?: string;
+  /** Montador: passos numerados, filtro por associado e modelos salvos. */
+  builder?: boolean;
 };
 
 export const REPORTS: ReportDef[] = [
   {
+    id: "assembly",
+    kind: "assembly",
+    group: "Prestar contas",
+    label: "Assembleia",
+    summary: "Saldos, para onde foi cada real e quem está devendo.",
+    purpose: "Prestação de contas à assembleia",
+    documentTitle: "Prestação de contas",
+    csvPrefix: "prestacao-contas-arno",
+    showSignatures: true,
+  },
+  {
     id: "fiscal",
     kind: "custom",
-    group: "Prestação de contas",
-    label: "Livro-caixa · comissão fiscal",
-    summary: "Livro numerado com saldo acumulado e assinaturas.",
+    group: "Prestar contas",
+    label: "Comissão fiscal",
+    summary: "Livro-caixa numerado, com saldo acumulado e assinaturas.",
     purpose: "Prestação de contas à comissão fiscal",
     documentTitle: "Livro-caixa",
     csvPrefix: "livro-caixa-arno",
@@ -36,55 +65,22 @@ export const REPORTS: ReportDef[] = [
     ledgerByDefault: true,
   },
   {
-    id: "assembly",
-    kind: "assembly",
-    group: "Prestação de contas",
-    label: "Prestação de contas · assembleia",
-    summary: "Saldos, ramos, principais tipos e inadimplência.",
-    purpose: "Prestação de contas à assembleia",
-    documentTitle: "Prestação de contas",
-    csvPrefix: "prestacao-contas-arno",
-    showSignatures: true,
-  },
-  {
-    id: "income",
+    id: "movements",
     kind: "custom",
-    group: "Movimentação",
-    label: "Entradas",
-    summary: "Tudo o que entrou, por tipo de conta.",
-    purpose: "Relatório de entradas",
-    documentTitle: "Entradas",
-    csvPrefix: "entradas-arno",
+    group: "Acompanhar o caixa",
+    label: "O que entrou e saiu",
+    summary: "Totais do período por tipo de movimentação ou meio de pagamento.",
+    purpose: "Entradas e saídas do período",
+    documentTitle: "Entradas e saídas",
+    csvPrefix: "entradas-saidas-arno",
     groupBy: "movementType",
-    types: ["income"],
-  },
-  {
-    id: "expense",
-    kind: "custom",
-    group: "Movimentação",
-    label: "Saídas",
-    summary: "Tudo o que saiu, por tipo de conta.",
-    purpose: "Relatório de saídas",
-    documentTitle: "Saídas",
-    csvPrefix: "saidas-arno",
-    groupBy: "movementType",
-    types: ["expense"],
-  },
-  {
-    id: "byMovementType",
-    kind: "custom",
-    group: "Movimentação",
-    label: "Por tipo de conta",
-    summary: "Entradas e saídas de cada tipo de movimentação.",
-    purpose: "Relatório por tipo de conta",
-    documentTitle: "Por tipo de conta",
-    csvPrefix: "por-tipo-arno",
-    groupBy: "movementType",
+    views: ["movementType", "method"],
+    chooseDirection: true,
   },
   {
     id: "monthly",
     kind: "custom",
-    group: "Movimentação",
+    group: "Acompanhar o caixa",
     label: "Evolução mensal",
     summary: "Entradas, saídas e resultado mês a mês.",
     purpose: "Evolução mensal do caixa",
@@ -93,82 +89,106 @@ export const REPORTS: ReportDef[] = [
     groupBy: "month",
   },
   {
-    id: "byNature",
-    kind: "custom",
-    group: "Movimentação",
-    label: "Fixas × variáveis",
-    summary: "Quanto do caixa é recorrente e quanto é eventual.",
-    purpose: "Relatório por natureza",
-    documentTitle: "Fixas e variáveis",
-    csvPrefix: "natureza-arno",
-    groupBy: "nature",
-  },
-  {
-    id: "byMethod",
-    kind: "custom",
-    group: "Movimentação",
-    label: "Por meio de pagamento",
-    summary: "Pix, dinheiro, cartão, transferência.",
-    purpose: "Relatório por meio de pagamento",
-    documentTitle: "Por meio de pagamento",
-    csvPrefix: "meio-pagamento-arno",
-    groupBy: "method",
-  },
-  {
-    id: "byBranch",
-    kind: "custom",
-    group: "Pessoas e ramos",
-    label: "Por ramo",
-    summary: "Visão gerencial: mensalidade entra só com a caixinha.",
-    purpose: "Relatório gerencial por ramo",
-    documentTitle: "Por ramo",
-    csvPrefix: "por-ramo-arno",
-    groupBy: "branch",
+    id: "branches",
+    kind: "link",
+    group: "Ramos e associados",
+    label: "Extrato dos ramos",
+    summary: "Quanto cada ramo recebeu e gastou, mês a mês.",
+    purpose: "",
+    documentTitle: "",
+    csvPrefix: "",
+    to: "/extrato-ramos",
   },
   {
     id: "byMember",
     kind: "custom",
-    group: "Pessoas e ramos",
-    label: "Por associado",
-    summary: "Quanto cada associado pagou ou recebeu.",
-    purpose: "Relatório por associado",
-    documentTitle: "Por associado",
+    group: "Ramos e associados",
+    label: "Pagamentos por associado",
+    summary: "Quanto cada associado pagou no período.",
+    purpose: "Pagamentos por associado",
+    documentTitle: "Pagamentos por associado",
     csvPrefix: "por-associado-arno",
     groupBy: "member",
     types: ["income"],
   },
   {
-    id: "byAccount",
-    kind: "custom",
-    group: "Pessoas e ramos",
-    label: "Por conta (titular)",
-    summary: "Movimentação pelo titular da conta vinculada.",
-    purpose: "Relatório por conta",
-    documentTitle: "Por conta",
-    csvPrefix: "por-conta-arno",
-    groupBy: "account",
-  },
-  {
     id: "delinquency",
     kind: "delinquency",
-    group: "Pessoas e ramos",
-    label: "Inadimplência",
+    group: "Ramos e associados",
+    label: "Quem está devendo",
     summary: "Mensalidades vencidas por associado, para cobrar.",
     purpose: "Relatório de inadimplência de mensalidades",
     documentTitle: "Inadimplência",
     csvPrefix: "inadimplencia-arno",
   },
+  {
+    id: "conference",
+    kind: "link",
+    group: "Conferir",
+    label: "Conferência das mensalidades",
+    summary: "Pagamentos fora da tabela, divisões a confirmar e sem associado.",
+    purpose: "",
+    documentTitle: "",
+    csvPrefix: "",
+    to: "/conferencia",
+  },
+  {
+    id: "unidentified",
+    kind: "custom",
+    group: "Conferir",
+    label: "Lançamentos a identificar",
+    summary: "O que entrou ou saiu sem tipo definido, para classificar.",
+    purpose: "Lançamentos a identificar",
+    documentTitle: "Lançamentos a identificar",
+    csvPrefix: "a-identificar-arno",
+    groupBy: "none",
+    presetTypeNames: ["A identificar"],
+    ledgerByDefault: true,
+  },
+  {
+    id: "builder",
+    kind: "custom",
+    group: "Montar relatório",
+    label: "Relatório personalizado",
+    summary: "Escolha período, agrupamento e filtros; salve como modelo para repetir.",
+    purpose: "Relatório personalizado",
+    documentTitle: "Relatório personalizado",
+    csvPrefix: "personalizado-arno",
+    groupBy: "movementType",
+    builder: true,
+  },
 ];
 
-export const REPORT_GROUPS = ["Prestação de contas", "Movimentação", "Pessoas e ramos"] as const;
+/** Modelos antigos (links salvos) → modelo atual. */
+const LEGACY_REPORT_IDS: Record<string, { id: string; types?: TxType[]; groupBy?: ReportGroupBy }> = {
+  income: { id: "movements", types: ["income"] },
+  expense: { id: "movements", types: ["expense"] },
+  byMovementType: { id: "movements" },
+  byMethod: { id: "movements", groupBy: "method" },
+  byNature: { id: "movements" },
+  byAccount: { id: "movements" },
+  byBranch: { id: "branches" },
+};
+
+/** Modelo pelo id da URL (aceita os antigos); sem id ou desconhecido, o primeiro. */
+export function reportFromParam(param: string | null): {
+  report: ReportDef;
+  types?: TxType[];
+  groupBy?: ReportGroupBy;
+} {
+  const legacy = param ? LEGACY_REPORT_IDS[param] : undefined;
+  const id = legacy?.id ?? param;
+  const report = REPORTS.find((item) => item.id === id) ?? REPORTS[0]!;
+  return { report, types: legacy?.types, groupBy: legacy?.groupBy };
+}
 
 export const GROUP_BY_LABELS: Record<ReportGroupBy, string> = {
   none: "Lançamento a lançamento",
   month: "Mês",
   branch: "Ramo",
-  movementType: "Tipo de conta",
-  nature: "Natureza (fixa/variável)",
-  account: "Conta (titular)",
+  movementType: "Tipo de movimentação",
+  nature: "Natureza",
+  account: "Titular da conta",
   member: "Associado",
   method: "Meio de pagamento",
 };
