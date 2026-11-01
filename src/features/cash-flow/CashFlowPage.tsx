@@ -110,15 +110,16 @@ type Flow = {
   months: { month: string; income: number; expense: number; net: number; balance: number }[];
 };
 
-type StampUser = { id: string; name: string; username: string } | null;
+type StampUser = { id: string; name: string } | null;
 
 type MemberOption = Member & { accounts: MemberAccount[]; guardians?: MemberGuardian[] };
 
+/** A lista traz só os nomes; o cadastro completo vem de /members e /movement-types. */
 type TxView = Transaction & {
-  movementType: MovementType | null;
-  member: Member | null;
-  account: MemberAccount | null;
-  guardian: MemberGuardian | null;
+  movementType: Pick<MovementType, "id" | "name"> | null;
+  member: Pick<Member, "id" | "name"> | null;
+  account: Pick<MemberAccount, "id" | "holderName"> | null;
+  guardian: Pick<MemberGuardian, "id" | "name" | "relationship"> | null;
   createdByUser: StampUser;
   updatedByUser: StampUser;
   hasNota?: boolean;
@@ -176,6 +177,7 @@ export default function CashFlow() {
   const yearTxs = useFetch<TxView[]>(month ? `/transactions?from=${year}-01-01&to=${year}-12-31` : null);
   const types = useFetch<MovementType[]>("/movement-types");
   const members = useFetch<MemberOption[]>("/members");
+  const membersById = useMemo(() => new Map((members.data ?? []).map((m) => [m.id, m])), [members.data]);
   const projects = useFetch<FinancialProject[]>(`/projects?year=${year || 2026}`);
   const [open, setOpen] = useState(false);
   const [identifyQueue, setIdentifyQueue] = useState<string[]>([]);
@@ -1170,13 +1172,14 @@ export default function CashFlow() {
   ) {
     const settlement = settlementOf(t.paymentStatus, t.date);
     const unidentifiedRow = isUnidentifiedName(t.movementType?.name);
+    const txMember = t.memberId ? membersById.get(t.memberId) : undefined;
     const canAllocateMensalidades =
       Boolean(options.allowSplit) &&
       t.type === "income" &&
       settlement === "paid" &&
       !t.splitGroupId &&
       (unidentifiedRow || isMensalidadeName(t.movementType?.name)) &&
-      !(t.member && (!paysMensalidade(t.member) || matchesMensalidadeAmount(t.member, t.amount)));
+      !(txMember && (!paysMensalidade(txMember) || matchesMensalidadeAmount(txMember, t.amount)));
     const dueDate = dueDateOf(t);
     const paidDate = paidDateOf(t);
     const RowTag = options.nested ? motion.tr : "tr";
