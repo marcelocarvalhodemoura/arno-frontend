@@ -292,9 +292,11 @@ export default function CashFlow() {
   );
   const wantsUnidentified = movementFilter === "__unidentified__" || unidentifiedTypeIds.has(movementFilter);
 
+  // Sem tipo e data de pagamento olham o ano: o pagamento pode cair fora do mês do vencimento.
+  const wantsYear = wantsUnidentified || Boolean(paidDateFilter);
   const periodSource = useMemo(() => {
-    return wantsUnidentified && month ? (yearTxs.data ?? txs.data ?? []) : (txs.data ?? []);
-  }, [wantsUnidentified, month, yearTxs.data, txs.data]);
+    return wantsYear && month ? (yearTxs.data ?? txs.data ?? []) : (txs.data ?? []);
+  }, [wantsYear, month, yearTxs.data, txs.data]);
 
   const txById = useMemo(() => {
     const map = new Map<string, TxView>();
@@ -363,8 +365,19 @@ export default function CashFlow() {
     wantsUnidentified,
   ]);
 
+  /** Algum filtro além do período: rateios abrem para mostrar qual parte entrou. */
+  const filtersActive = Boolean(
+    query.trim() ||
+    typeFilter ||
+    natureFilter ||
+    branchFilter ||
+    movementFilter ||
+    statusFilter ||
+    dueDateFilter ||
+    paidDateFilter,
+  );
+
   const displayRows = useMemo(() => {
-    const searchActive = Boolean(query.trim());
     const rows = buildCashFlowDisplayRows(
       periodSource.map((t) => ({
         id: t.id,
@@ -381,10 +394,10 @@ export default function CashFlow() {
         movementTypeName: t.movementType?.name ?? null,
       })),
       matchedIds,
-      searchActive,
+      filtersActive,
     );
     return sortCashFlowDisplayRows(rows, txById, sortKey, sortDir);
-  }, [periodSource, matchedIds, query, txById, sortKey, sortDir]);
+  }, [periodSource, matchedIds, filtersActive, txById, sortKey, sortDir]);
 
   function toggleSort(column: CashFlowSortKey) {
     setSortDir((current) => nextSortDir(current, sortKey === column));
@@ -436,7 +449,7 @@ export default function CashFlow() {
       to,
       sortKey,
       sortDir,
-      wantsUnidentified ? "year" : "period",
+      wantsYear ? "year" : "period",
     ].join("|"),
   );
 
@@ -1539,6 +1552,10 @@ export default function CashFlow() {
             <p className="muted" style={{ margin: "-4px 0 12px" }}>
               Inclui lançamentos sem tipo de todos os meses de {year}.
             </p>
+          ) : month && paidDateFilter ? (
+            <p className="muted" style={{ margin: "-4px 0 12px" }}>
+              Inclui o que foi pago nesse dia com vencimento em qualquer mês de {year}.
+            </p>
           ) : null}
 
           <ListingResults fetching={refreshing} fetchLabel="Atualizando lançamentos…">
@@ -1688,6 +1705,16 @@ export default function CashFlow() {
                             <td className={`num ${signedClass(row.type === "income" ? row.total : -row.total)}`}>
                               {row.type === "income" ? "+" : "−"} {brl(row.total)}
                               <div className="split-amount-meta muted">crédito original</div>
+                              {filtersActive && parts.some((part) => !matchedIds.has(part.id)) ? (
+                                <div className="split-amount-meta muted">
+                                  no filtro:{" "}
+                                  {brl(
+                                    parts
+                                      .filter((part) => matchedIds.has(part.id))
+                                      .reduce((sum, part) => sum + part.amount, 0),
+                                  )}
+                                </div>
+                              ) : null}
                             </td>
                             <td className="cell-actions">
                               <IconButton

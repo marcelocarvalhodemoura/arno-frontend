@@ -44,4 +44,10 @@ describe("matchesQuery", () => {
     expect(matchesQuery("souza", ["Ana Souza", "ana@grupo.org"])).toBe(true);
     expect(matchesQuery("pix", ["Conta", "transferência"])).toBe(false);
   });
+
+  it("ignores accents on both sides", () => {
+    expect(matchesQuery("andres", ["ANDRÉS MIGUEL"])).toBe(true);
+    expect(matchesQuery("João", ["joao da silva"])).toBe(true);
+    expect(matchesQuery("março", ["Mensalidade marco"])).toBe(true);
+  });
 });
