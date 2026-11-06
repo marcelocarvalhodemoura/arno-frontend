@@ -100,6 +100,7 @@ import { useFetch } from "@/shared/hooks/use-fetch";
 import { isMensalidadeName, isUnidentifiedName, natureForTypeName } from "@/domain/movement";
 import { clearIdentifyFlag, readIdentifyFlag } from "@/core/session/identify-flag";
 import { buildSplitPartDescription } from "@/features/cash-flow/split-description";
+import MensalidadeFundsLine, { type MensalidadeFunds } from "@/features/cash-flow/MensalidadeFundsLine";
 import { buildCashFlowDisplayRows, splitGroupLabel, uniqueSplitBranches } from "@/features/cash-flow/split-display";
 import { sortCashFlowDisplayRows, type CashFlowSortKey } from "@/features/cash-flow/sort-display";
 import SortableTh, { nextSortDir, type SortDir } from "@/shared/ui/SortableTh";
@@ -125,6 +126,8 @@ type TxView = Transaction & {
   hasNota?: boolean;
   /** Mensalidade com parcela de acordo embutida, ou lançamento só de acordo. */
   arrearsMarker?: "embed" | "agreement" | null;
+  /** Mensalidade (lançamento do Grupo): quanto dela é de cada fundo. */
+  funds?: MensalidadeFunds | null;
 };
 
 type OpenMensalidade = {
@@ -312,7 +315,8 @@ export default function CashFlow() {
     for (const t of periodSource) {
       if (typeFilter && t.type !== typeFilter) continue;
       if (natureFilter && t.nature !== natureFilter) continue;
-      if (branchFilter && t.branch !== branchFilter) continue;
+      // Mensalidade é do Grupo, mas aparece também no ramo do jovem (a caixinha é dele).
+      if (branchFilter && t.branch !== branchFilter && t.funds?.memberBranch !== branchFilter) continue;
       if (wantsUnidentified) {
         if (!isUnidentifiedName(t.movementType?.name)) continue;
       } else if (movementFilter && t.movementTypeId !== movementFilter) {
@@ -519,8 +523,9 @@ export default function CashFlow() {
   /** Escolher o tipo define entrada/saída (quando o tipo só tem uma direção), natureza, ramo e previsão. */
   function onLaunchTypeChange(movementTypeId: string) {
     const next = (types.data ?? []).find((item) => item.id === movementTypeId);
-    const branch = next?.branch && next.branch !== "grupo" ? next.branch : form.branch;
     const kind = launchKindOf(next?.name);
+    const branch =
+      kind === "mensalidade" ? "grupo" : next?.branch && next.branch !== "grupo" ? next.branch : form.branch;
     const type = next && next.direction !== "both" ? next.direction : form.type;
     const date =
       kind === "mensalidade" && form.date ? competenceDate(form.date.slice(0, 7), dueDay) : form.date || form.paidAt;
@@ -627,6 +632,11 @@ export default function CashFlow() {
     );
   }
 
+  function isMensalidadeType(movementTypeId: string) {
+    const type = (types.data ?? []).find((item) => item.id === movementTypeId);
+    return launchKindOf(type?.name) === "mensalidade";
+  }
+
   function onMemberChange(memberId: string) {
     const member = (members.data ?? []).find((m) => m.id === memberId);
     const primary = member?.accounts.find((a) => a.isPrimary && a.active) ?? member?.accounts[0];
@@ -636,7 +646,8 @@ export default function CashFlow() {
       memberId,
       memberAccountId: primary?.id ?? "",
       memberGuardianId: firstGuardian,
-      branch: member?.branch ?? form.branch,
+      // Mensalidade é sempre do Grupo; a caixinha do ramo sai da divisão.
+      branch: isMensalidadeType(form.movementTypeId) ? "grupo" : (member?.branch ?? form.branch),
     });
   }
 
@@ -1264,6 +1275,7 @@ export default function CashFlow() {
             {t.account ? `${t.account.holderName} · ` : ""}
             {methodLabel(t.method)}
           </div>
+          {t.funds ? <MensalidadeFundsLine funds={t.funds} /> : null}
           <RecordStamp
             origin={t.origin}
             importSource={t.importSource}
