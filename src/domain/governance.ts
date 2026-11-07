@@ -146,5 +146,30 @@ export interface AssemblyReport {
     cashBalance: number;
   };
   byType: { name: string; type: TxType; amount: number }[];
+  /** Null quando não houve mensalidade paga no período. */
+  feeComposition: PaidFeeComposition | null;
   delinquency: { count: number; members: number; amount: number; rate: number };
+}
+
+/** Totais por destino das mensalidades com divisão gravada (espelho de DestinationTotals do backend). */
+export interface PaidFeeCompositionTotals {
+  received: number;
+  groupCash: number;
+  group: number;
+  branch: number;
+  snack: number;
+  club: number;
+  dilution: number;
+  lateFee: number;
+  arrears: number;
+  difference: number;
+  count: number;
+}
+
+/** Quanto das mensalidades pagas no relatório foi para cada parte (divisão gravada no pagamento). */
+export interface PaidFeeComposition {
+  total: number;
+  totals: PaidFeeCompositionTotals;
+  unlinked: { count: number; amount: number };
+  byBranch: (PaidFeeCompositionTotals & { memberBranch: string })[];
 }

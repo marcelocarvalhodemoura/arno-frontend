@@ -4587,3 +4587,36 @@ form.is-attempted
   justify-content: flex-end;
   margin-top: 16px;
 }
+
+/* Composição das mensalidades recebidas: partes recuadas sob cada destino. */
+.fee-composition tr.fee-composition__part td:first-child {
+  padding-left: 28px;
+  color: var(--muted);
+}
+
+/* Fluxo de caixa: divisão da mensalidade (lançamento do Grupo) em fundos. */
+.tx-funds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  margin-top: 4px;
+  font-size: 0.8rem;
+  align-items: center;
+}
+
+.tx-funds__label {
+  color: var(--muted);
+}
+
+.tx-funds__part {
+  border: 1px solid var(--line);
+  background: var(--paper);
+  border-radius: 999px;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+
+.tx-funds__part--difference,
+.tx-funds__warn {
+  color: var(--wine);
+}

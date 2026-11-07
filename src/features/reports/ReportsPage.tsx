@@ -8,6 +8,7 @@ import {
   type CustomReportQuery,
   type CustomReportRow,
   type EventResultRow,
+  type PaidFeeComposition,
   type FiscalLedgerLine,
   type MovementType,
   type ReportGroupBy,
@@ -48,8 +49,9 @@ import {
   type ReportDef,
 } from "./report-catalog";
 import { ReportClosing, ReportLetterhead, SummaryBars } from "./ReportPrint";
-import { joinCsvBlocks, reportSectionsCsv } from "./report-csv";
+import { feeCompositionCsv, joinCsvBlocks, reportSectionsCsv } from "./report-csv";
 import ReportBuilder, { builderTitle, type BuilderState } from "./ReportBuilder";
+import FeeCompositionView from "./FeeCompositionView";
 
 type CustomResult = {
   rows: CustomReportRow[];
@@ -59,6 +61,7 @@ type CustomResult = {
   closing: number;
   events: EventResultRow[];
   payers: TypePayers[];
+  feeComposition: PaidFeeComposition | null;
 };
 
 type DelinquencyResult = {
@@ -322,7 +325,14 @@ export default function Reports() {
             Líquido: row.net,
             Lançamentos: row.count,
           }));
-      downloadCsv(name, joinCsvBlocks([toCsv(rows), ...reportSectionsCsv(result.data.events, result.data.payers)]));
+      downloadCsv(
+        name,
+        joinCsvBlocks([
+          toCsv(rows),
+          ...reportSectionsCsv(result.data.events, result.data.payers),
+          feeCompositionCsv(result.data.feeComposition),
+        ]),
+      );
     } else if (result.kind === "delinquency") {
       downloadCsv(
         name,
@@ -343,21 +353,24 @@ export default function Reports() {
     } else {
       downloadCsv(
         name,
-        toCsv([
-          ...result.data.destinations.rows.map((row) => ({
-            Bloco: "Destino",
-            Nome: row.label,
-            "Saldo anterior": row.opening,
-            Entradas: row.income,
-            Saídas: row.expense,
-            Saldo: row.balance,
-          })),
-          ...result.data.byType.map((row) => ({
-            Bloco: "Tipo",
-            Nome: row.name,
-            Entradas: row.type === "income" ? row.amount : 0,
-            Saídas: row.type === "expense" ? row.amount : 0,
-          })),
+        joinCsvBlocks([
+          toCsv([
+            ...result.data.destinations.rows.map((row) => ({
+              Bloco: "Destino",
+              Nome: row.label,
+              "Saldo anterior": row.opening,
+              Entradas: row.income,
+              Saídas: row.expense,
+              Saldo: row.balance,
+            })),
+            ...result.data.byType.map((row) => ({
+              Bloco: "Tipo",
+              Nome: row.name,
+              Entradas: row.type === "income" ? row.amount : 0,
+              Saídas: row.type === "expense" ? row.amount : 0,
+            })),
+          ]),
+          feeCompositionCsv(result.data.feeComposition),
         ]),
       );
     }
@@ -738,6 +751,7 @@ export default function Reports() {
                     </ListingResults>
                   </article>
 
+                  {result.data.feeComposition ? <FeeCompositionView data={result.data.feeComposition} /> : null}
                   {result.data.events.length ? <EventResultsView rows={result.data.events} /> : null}
                   {result.data.payers.map((group) => (
                     <TypePayersView key={group.movementTypeId} data={group} />
@@ -1167,6 +1181,7 @@ function AssemblyView({ data }: { data: AssemblyReport }) {
         </tbody>
       </table>
       <DestinationsView data={data} />
+      {data.feeComposition ? <FeeCompositionView data={data.feeComposition} /> : null}
       <div className="report-cols">
         <article className="card report-section">
           <h3>Principais tipos de movimentação</h3>
