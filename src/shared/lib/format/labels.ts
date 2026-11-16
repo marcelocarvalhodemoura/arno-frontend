@@ -6,6 +6,15 @@ export function stampAuthor(author?: { name: string; username?: string } | null)
   return name;
 }
 
+/** Opções de meio de pagamento para seletores (Pix primeiro, que é o padrão). */
+export const PAYMENT_METHOD_OPTIONS = [
+  { value: "pix", label: "Pix" },
+  { value: "cash", label: "Dinheiro" },
+  { value: "card", label: "Cartão" },
+  { value: "transfer", label: "Transferência" },
+  { value: "other", label: "Outro" },
+] as const;
+
 export function methodLabel(method: string): string {
   const map: Record<string, string> = {
     pix: "Pix",
@@ -13,6 +22,7 @@ export function methodLabel(method: string): string {
     transfer: "Transferência",
     card: "Cartão",
     other: "Outro",
+    barter: "Permuta",
   };
   return map[method] ?? method;
 }

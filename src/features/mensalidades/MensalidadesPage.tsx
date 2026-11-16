@@ -10,6 +10,7 @@ import {
   type MensalidadeRow,
   type MemberRole,
   type MemberStatus,
+  type PaymentMethod,
   type YouthBranchId,
 } from "@/domain";
 import PageHeader from "@/shared/ui/PageHeader";
@@ -28,7 +29,16 @@ import Modal from "@/shared/ui/Modal";
 import SubmitButton from "@/shared/ui/SubmitButton";
 import SearchableSelect from "@/shared/ui/SearchableSelect";
 import { AnimatePresence } from "framer-motion";
-import { brl, formatDate, MONTHS, roleLabel, settlementLabel, todayISO } from "@/shared/lib/format";
+import {
+  brl,
+  formatDate,
+  methodLabel,
+  MONTHS,
+  PAYMENT_METHOD_OPTIONS,
+  roleLabel,
+  settlementLabel,
+  todayISO,
+} from "@/shared/lib/format";
 import { matchesQuery, usePagedList } from "@/shared/lib/listing";
 import { usePeriod } from "@/shared/lib/period";
 import { useFetch } from "@/shared/hooks/use-fetch";
@@ -66,6 +76,7 @@ export default function Mensalidades() {
   const [roleFilter, setRoleFilter] = useState<MemberRole | "">("");
   const [picked, setPicked] = useState<{ row: MensalidadeRow; cell: MensalidadeCell } | null>(null);
   const [paidAtDraft, setPaidAtDraft] = useState(todayISO());
+  const [methodDraft, setMethodDraft] = useState<PaymentMethod>("pix");
   const [busy, setBusy] = useState(false);
   const [dueDayDraft, setDueDayDraft] = useState("");
   const [alsoSettleIds, setAlsoSettleIds] = useState<string[]>([]);
@@ -263,9 +274,10 @@ export default function Mensalidades() {
           timing,
           paidAt,
           notifyReceipt: true,
+          method: methodDraft,
         }),
       });
-      const label = timing === "on_time" ? "pontual" : "com atraso";
+      const label = `${timing === "on_time" ? "pontual" : "com atraso"} · ${methodLabel(methodDraft)}`;
       const count = tx.settled ?? transactionIds.length;
       const notify = tx.notify;
       const notifyParts = notify
@@ -608,6 +620,7 @@ export default function Mensalidades() {
                             cell={cell}
                             onOpen={() => {
                               setPaidAtDraft(todayISO());
+                              setMethodDraft("pix");
                               setAlsoSettleIds([]);
                               setPicked({ row, cell });
                             }}
@@ -655,6 +668,13 @@ export default function Mensalidades() {
                 : clubFeeHint(picked.row.branch, picked.cell.dueDate)}
             </p>
             <MensalidadeFormulaTable cell={picked.cell} />
+            {picked.cell.status === "paid" && (picked.cell.paidAt || picked.cell.method) ? (
+              <p className="muted">
+                Pago
+                {picked.cell.paidAt ? ` em ${formatDate(picked.cell.paidAt)}` : ""}
+                {picked.cell.method ? ` · ${methodLabel(picked.cell.method)}` : ""}
+              </p>
+            ) : null}
             {picked.cell.status === "paid" && picked.cell.transactionId ? (
               <PaidAllocation transactionId={picked.cell.transactionId} />
             ) : null}
@@ -664,8 +684,17 @@ export default function Mensalidades() {
                   <span>Data do pagamento</span>
                   <input type="date" value={paidAtDraft} onChange={(e) => setPaidAtDraft(e.target.value)} />
                 </label>
+                <label className="field">
+                  <span>Meio do pagamento</span>
+                  <SearchableSelect
+                    value={methodDraft}
+                    placeholder="Selecione"
+                    onChange={(value) => setMethodDraft((value || "pix") as PaymentMethod)}
+                    options={[...PAYMENT_METHOD_OPTIONS]}
+                  />
+                </label>
                 {otherOpenMonths.length ? (
-                  <fieldset className="field wide" style={{ border: "none", padding: 0, margin: 0 }}>
+                  <fieldset className="field wide" style={{ border: "none", padding: 0 }}>
                     <legend className="muted" style={{ marginBottom: 8 }}>
                       Baixar também outros meses (adiantamento)
                     </legend>
@@ -688,7 +717,7 @@ export default function Mensalidades() {
                   </fieldset>
                 ) : null}
                 {siblingOpenCells.length ? (
-                  <fieldset className="field wide" style={{ border: "none", padding: 0, margin: 0 }}>
+                  <fieldset className="field wide" style={{ border: "none", padding: 0 }}>
                     <legend className="muted" style={{ marginBottom: 8 }}>
                       Baixar também irmão(s) neste mês (mesmo pagamento da família)
                     </legend>
