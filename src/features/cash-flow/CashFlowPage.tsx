@@ -2078,6 +2078,8 @@ export default function CashFlow() {
                         { value: "cash", label: "Dinheiro" },
                         { value: "card", label: "Cartão" },
                         { value: "other", label: "Outro" },
+                        // Permuta só nasce aprovada pela diretoria; na edição aparece para manter o meio.
+                        ...(form.method === "barter" ? [{ value: "barter", label: "Permuta" }] : []),
                       ]}
                     />
                   </label>

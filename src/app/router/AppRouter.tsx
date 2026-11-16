@@ -21,6 +21,7 @@ import SnackFundPage from "@/features/snack-fund/SnackFundPage";
 import ConferencePage from "@/features/allocations/ConferencePage";
 import BranchLedgerPage from "@/features/branch-ledger/BranchLedgerPage";
 import ArrearsPage from "@/features/arrears/ArrearsPage";
+import BarterPage from "@/features/barter/BarterPage";
 import ProjectsPage from "@/features/projects/ProjectsPage";
 import ReportsPage from "@/features/reports/ReportsPage";
 import AuditPage from "@/features/audit/AuditPage";
@@ -80,6 +81,7 @@ export function AppRouter() {
               <Route path="conferencia" element={<ConferencePage />} />
               <Route path="extrato-ramos" element={<BranchLedgerPage />} />
               <Route path="dividas" element={<ArrearsPage />} />
+              <Route path="permutas" element={<BarterPage />} />
               <Route path="integracao" element={<IntegrationPage />} />
               <Route path="tipos" element={<MovementTypesPage />} />
               <Route path="taxas" element={<FeesPage />} />

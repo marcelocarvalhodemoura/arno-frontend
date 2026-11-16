@@ -22,6 +22,7 @@ export function methodLabel(method: string): string {
     transfer: "Transferência",
     card: "Cartão",
     other: "Outro",
+    barter: "Permuta",
   };
   return map[method] ?? method;
 }

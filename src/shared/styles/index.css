@@ -4620,3 +4620,18 @@ form.is-attempted
 .tx-funds__warn {
   color: var(--wine);
 }
+
+/* Prévia da permuta: mensalidades abatidas e sobra em doação. */
+.barter-plan {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.barter-plan p,
+.barter-plan ul {
+  margin: 0;
+}
+
+.barter-plan ul {
+  padding-left: 1.1rem;
+}

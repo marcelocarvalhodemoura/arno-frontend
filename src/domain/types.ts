@@ -6,7 +6,8 @@ export type MemberRole = "jovem" | "escotista" | "dirigente" | "clube";
 export type MemberStatus = "active" | "inactive";
 export type TxType = "income" | "expense";
 export type TxNature = "fixed" | "variable";
-export type PaymentMethod = "pix" | "cash" | "transfer" | "card" | "other";
+/** barter = permuta: só nasce pela tela Permutas, com aprovação da diretoria. */
+export type PaymentMethod = "pix" | "cash" | "transfer" | "card" | "other" | "barter";
 export type TxPaymentStatus = "paid" | "pending";
 export type MovementDirection = "income" | "expense" | "both";
 /** Para quem é a atividade: internal = associados (acampamento, bivaque), external = comunidade (festival, pastelada). */
