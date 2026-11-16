@@ -81,6 +81,7 @@ import {
   methodLabel,
   MONTHS,
   natureLabel,
+  PAYMENT_METHOD_OPTIONS,
   originLabel,
   dueDateOf,
   paidDateOf,
@@ -253,6 +254,7 @@ export default function CashFlow() {
     { mode: "single"; tx: TxView } | { mode: "split"; parts: TxView[] } | null
   >(null);
   const [payConfirmDate, setPayConfirmDate] = useState(todayISO);
+  const [payConfirmMethod, setPayConfirmMethod] = useState<PaymentMethod>("pix");
   const [alsoSettleIds, setAlsoSettleIds] = useState<string[]>([]);
   const [sortKey, setSortKey] = useState<CashFlowSortKey>("dueDate");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -1052,6 +1054,7 @@ export default function CashFlow() {
 
   function askMarkAsPaid(target: { mode: "single"; tx: TxView } | { mode: "split"; parts: TxView[] }) {
     setPayConfirmDate(todayISO());
+    setPayConfirmMethod((target.mode === "single" ? target.tx.method : target.parts[0]?.method) ?? "pix");
     setAlsoSettleIds([]);
     setPayConfirm(target);
   }
@@ -1061,7 +1064,12 @@ export default function CashFlow() {
     setAlsoSettleIds([]);
   }
 
-  async function setSplitGroupPaymentStatus(parts: TxView[], paymentStatus: TxPaymentStatus, paidAt?: string) {
+  async function setSplitGroupPaymentStatus(
+    parts: TxView[],
+    paymentStatus: TxPaymentStatus,
+    paidAt?: string,
+    method?: PaymentMethod,
+  ) {
     const paymentDate = (paidAt?.trim() || todayISO()).slice(0, 10);
     await Promise.all(
       parts.map((part) =>
@@ -1070,6 +1078,7 @@ export default function CashFlow() {
           body: JSON.stringify({
             paymentStatus,
             paidAt: paymentStatus === "paid" ? paymentDate : null,
+            ...(paymentStatus === "paid" && method ? { method } : {}),
           }),
         }),
       ),
@@ -1080,13 +1089,14 @@ export default function CashFlow() {
     await Promise.all([flow.reload(), txs.reload(), yearTxs.reload()]);
   }
 
-  async function setPaymentStatus(tx: TxView, paymentStatus: TxPaymentStatus, paidAt?: string) {
+  async function setPaymentStatus(tx: TxView, paymentStatus: TxPaymentStatus, paidAt?: string, method?: PaymentMethod) {
     const paymentDate = (paidAt?.trim() || todayISO()).slice(0, 10);
     await api(`/transactions/${tx.id}`, {
       method: "PATCH",
       body: JSON.stringify({
         paymentStatus,
         paidAt: paymentStatus === "paid" ? paymentDate : null,
+        ...(paymentStatus === "paid" && method ? { method } : {}),
       }),
     });
     toast.success(
@@ -1098,6 +1108,7 @@ export default function CashFlow() {
   async function confirmMarkAsPaid() {
     if (!payConfirm) return;
     const paidAt = payConfirmDate.trim() || todayISO();
+    const method = payConfirmMethod;
     const extras = [...alsoSettleIds];
     const target = payConfirm;
     closePayConfirm();
@@ -1113,6 +1124,7 @@ export default function CashFlow() {
               timing: "on_time",
               paidAt,
               notifyReceipt: true,
+              method,
             }),
           });
           const count = result.settled ?? transactionIds.length;
@@ -1127,10 +1139,10 @@ export default function CashFlow() {
         }
         return;
       }
-      await setPaymentStatus(target.tx, "paid", paidAt);
+      await setPaymentStatus(target.tx, "paid", paidAt, method);
       return;
     }
-    await setSplitGroupPaymentStatus(target.parts, "paid", paidAt);
+    await setSplitGroupPaymentStatus(target.parts, "paid", paidAt, method);
   }
 
   async function pullSicredi(quiet = false) {
@@ -2454,6 +2466,15 @@ export default function CashFlow() {
               <span>Data de pagamento</span>
               <input type="date" value={payConfirmDate} onChange={(e) => setPayConfirmDate(e.target.value)} />
               <small className="muted">Se deixar em branco, usamos a data de hoje.</small>
+            </label>
+            <label className="field">
+              <span>Meio do pagamento</span>
+              <SearchableSelect
+                value={payConfirmMethod}
+                placeholder="Selecione"
+                onChange={(value) => setPayConfirmMethod((value || "pix") as PaymentMethod)}
+                options={[...PAYMENT_METHOD_OPTIONS]}
+              />
             </label>
             {payConfirm.mode === "single" && payConfirmOtherMonths.length ? (
               <fieldset className="field wide" style={{ border: "none", padding: 0, margin: 0 }}>
