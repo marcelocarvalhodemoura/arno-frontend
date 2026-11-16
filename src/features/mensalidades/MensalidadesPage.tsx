@@ -694,7 +694,7 @@ export default function Mensalidades() {
                   />
                 </label>
                 {otherOpenMonths.length ? (
-                  <fieldset className="field wide" style={{ border: "none", padding: 0, margin: 0 }}>
+                  <fieldset className="field wide" style={{ border: "none", padding: 0 }}>
                     <legend className="muted" style={{ marginBottom: 8 }}>
                       Baixar também outros meses (adiantamento)
                     </legend>
@@ -717,7 +717,7 @@ export default function Mensalidades() {
                   </fieldset>
                 ) : null}
                 {siblingOpenCells.length ? (
-                  <fieldset className="field wide" style={{ border: "none", padding: 0, margin: 0 }}>
+                  <fieldset className="field wide" style={{ border: "none", padding: 0 }}>
                     <legend className="muted" style={{ marginBottom: 8 }}>
                       Baixar também irmão(s) neste mês (mesmo pagamento da família)
                     </legend>

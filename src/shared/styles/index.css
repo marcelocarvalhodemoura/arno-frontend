@@ -2063,6 +2063,17 @@ table.data tr.tx-split-part:last-of-type td:first-child {
   margin-bottom: 18px;
 }
 
+/* Campo solto no modal (fora de .form-grid): o reset global zera margens e o rótulo
+   colava no texto ou no campo de cima. */
+.modal > :not(h2) + .field,
+.modal > :not(h2) + .barter-plan {
+  margin-top: 14px;
+}
+
+.modal > .barter-plan + p {
+  margin-top: 10px;
+}
+
 .modal-actions {
   display: flex;
   justify-content: flex-end;

@@ -2479,7 +2479,7 @@ export default function CashFlow() {
               />
             </label>
             {payConfirm.mode === "single" && payConfirmOtherMonths.length ? (
-              <fieldset className="field wide" style={{ border: "none", padding: 0, margin: 0 }}>
+              <fieldset className="field wide" style={{ border: "none", padding: 0 }}>
                 <legend className="muted" style={{ marginBottom: 8 }}>
                   Baixar também outros meses (adiantamento)
                 </legend>
