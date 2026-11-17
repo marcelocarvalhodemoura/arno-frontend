@@ -63,12 +63,12 @@ type MatchableTx = {
 /**
  * Agrupa lançamentos com o mesmo splitGroupId em uma linha de sanfona.
  * Um grupo entra na lista se qualquer parte estiver em `matchedIds`.
- * `forceExpand` quando há termo de busca ativo e o grupo foi incluído.
+ * `forceExpand` quando há busca ou filtro ativo e o grupo foi incluído.
  */
 export function buildCashFlowDisplayRows(
   source: MatchableTx[],
   matchedIds: Set<string>,
-  searchActive: boolean,
+  filtersActive: boolean,
 ): CashFlowDisplayRow[] {
   const byGroup = new Map<string, MatchableTx[]>();
   for (const tx of source) {
@@ -113,7 +113,7 @@ export function buildCashFlowDisplayRows(
         label: splitGroupLabel(parts),
         beneficiaries: formatSplitBeneficiaries(peers),
         partCount: parts[0].splitCount ?? parts.length,
-        forceExpand: searchActive,
+        forceExpand: filtersActive,
       });
       continue;
     }

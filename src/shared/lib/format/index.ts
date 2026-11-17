@@ -6,6 +6,7 @@ export {
   directionLabel,
   holderKindLabel,
   methodLabel,
+  PAYMENT_METHOD_OPTIONS,
   natureLabel,
   originLabel,
   originShort,

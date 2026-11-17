@@ -1,4 +1,5 @@
-import { BRANCH_LABELS, type EventResultRow, type TypePayers } from "@/domain";
+import { BRANCH_LABELS, type EventResultRow, type PaidFeeComposition, type TypePayers } from "@/domain";
+import { compositionRows } from "./fee-composition";
 import { formatDate, toCsv } from "@/shared/lib/format";
 
 /** Linha de título de um bloco do CSV, entre aspas como o resto. */
@@ -55,6 +56,18 @@ export function reportSectionsCsv(events: EventResultRow[], payers: TypePayers[]
     blocks.push([titleLine(`Associados pagantes · ${group.name}`), toCsv(rows)].join("\n"));
   }
   return blocks;
+}
+
+/** Bloco "Composição das mensalidades recebidas"; vazio se não houve mensalidade paga. */
+export function feeCompositionCsv(data: PaidFeeComposition | null): string {
+  if (!data) return "";
+  const rows = compositionRows(data).map((row) => ({
+    Destino: row.kind === "part" ? "" : row.label,
+    Parte: row.kind === "part" ? row.label : "",
+    Observação: row.note ?? "",
+    Valor: row.amount,
+  }));
+  return [titleLine("Composição das mensalidades recebidas"), toCsv(rows)].join("\n");
 }
 
 /** Junta a tabela principal e as seções extras, separadas por uma linha em branco. */

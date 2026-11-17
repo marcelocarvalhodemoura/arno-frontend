@@ -11,20 +11,28 @@ export const reportsGuide: PageGuideContent = {
       title: "Escolha o relatório",
       body: (
         <>
-          <p>À esquerda ficam os relatórios, em três grupos. Clicar já gera o relatório com o período escolhido.</p>
+          <p>À esquerda ficam os relatórios, separados pelo que você quer fazer. Clicar já mostra o resultado.</p>
           <ul>
             <li>
-              <strong>Prestação de contas</strong> — Livro-caixa da comissão fiscal (com assinaturas) e Prestação de
-              contas para a assembleia.
+              <strong>Prestar contas</strong> — Assembleia (saldos, para onde foi cada real e quem está devendo) e
+              Comissão fiscal (livro-caixa com assinaturas).
             </li>
             <li>
-              <strong>Movimentação</strong> — Entradas, Saídas, Por tipo de conta, Evolução mensal, Fixas × variáveis e
-              Por meio de pagamento.
+              <strong>Acompanhar o caixa</strong> — O que entrou e saiu (por tipo de movimentação ou meio de pagamento)
+              e Evolução mensal.
             </li>
             <li>
-              <strong>Pessoas e ramos</strong> — Por ramo, Por associado, Por conta (titular) e Inadimplência.
+              <strong>Ramos e associados</strong> — Extrato dos ramos, Pagamentos por associado e Quem está devendo.
+            </li>
+            <li>
+              <strong>Conferir</strong> — Conferência das mensalidades e Lançamentos a identificar.
+            </li>
+            <li>
+              <strong>Montar relatório</strong> — Relatório personalizado: você escolhe o que mostrar, como agrupar e os
+              filtros (ramos, tipos de movimentação, associados) e pode salvar como modelo.
             </li>
           </ul>
+          <p className="muted">Os itens com ↗ abrem a tela própria do relatório.</p>
         </>
       ),
       media: {
@@ -35,22 +43,43 @@ export const reportsGuide: PageGuideContent = {
     },
     {
       id: "period",
-      title: "Período, agrupamento e filtros",
+      title: "Período, ver por e filtros",
       body: (
         <>
           <p>
             Use os atalhos (<em>Este mês</em>, <em>Mês anterior</em>, <em>Ano até hoje</em>, semestres, ano anterior) ou
-            digite as datas. <strong>Agrupar por</strong> muda a síntese: tipo de conta, mês, ramo, associado, meio de
-            pagamento, natureza ou titular.
+            digite as datas. Em <strong>O que entrou e saiu</strong>, escolha <em>Ver por</em> (tipo de movimentação ou
+            meio de pagamento) e <em>Mostrar</em> (entradas e saídas, só entradas ou só saídas).
           </p>
           <p>
-            Em <strong>Filtros</strong> você restringe ramos, direção, natureza e tipos de conta; o resumo ao lado do
-            título mostra o que está valendo. Depois de mudar filtros, clique em <strong>Gerar relatório</strong>.
+            Em <strong>Filtros</strong> você restringe ramos e tipos de movimentação; o resumo ao lado mostra o que está
+            valendo. O relatório se atualiza sozinho a cada mudança.
           </p>
           <p className="muted">
             Marque <em>Incluir o livro-caixa detalhado</em> para ver e imprimir lançamento a lançamento, com saldo
-            acumulado. Agrupado por ramo, a mensalidade entra só com a caixinha do ramo (conforme a Composição da
-            mensalidade).
+            acumulado. Quanto cada ramo tem fica no <strong>Extrato dos ramos</strong>, o mesmo número usado na
+            prestação de contas da assembleia.
+          </p>
+        </>
+      ),
+    },
+    {
+      id: "builder",
+      title: "Relatório personalizado e modelos",
+      body: (
+        <>
+          <p>
+            Siga os passos numerados: período, o que mostrar, agrupar por, filtrar e detalhe. O título do documento se
+            monta sozinho a partir das escolhas.
+          </p>
+          <p>
+            Para repetir o mesmo relatório depois, dê um nome e clique em <strong>Salvar modelo</strong>. Em{" "}
+            <strong>Modelos salvos</strong> você abre, atualiza com as escolhas atuais ou apaga um modelo. Os modelos
+            ficam disponíveis para todos os administradores.
+          </p>
+          <p className="muted">
+            Salvo com um atalho de período (ex.: “Ano até hoje”), o modelo recalcula as datas ao ser aberto; com datas
+            digitadas, abre sempre no mesmo período.
           </p>
         </>
       ),
@@ -61,8 +90,9 @@ export const reportsGuide: PageGuideContent = {
       body: (
         <>
           <p>
-            Os cartões trazem os totais do período. Em relatórios de uma direção só (Entradas, Saídas), aparecem total,
-            quantidade de lançamentos, o maior grupo e a média por lançamento.
+            A primeira linha resume o período numa frase: quanto entrou, quanto saiu, quanto sobrou e com quanto o caixa
+            terminou. Os cartões trazem os mesmos totais; mostrando só entradas ou só saídas, aparecem total, quantidade
+            de lançamentos, o maior grupo e a média por lançamento.
           </p>
           <p>
             A síntese mostra as barras dos maiores valores e a tabela com entradas, saídas, líquido,{" "}
@@ -73,7 +103,7 @@ export const reportsGuide: PageGuideContent = {
     },
     {
       id: "delinquency",
-      title: "Inadimplência",
+      title: "Quem está devendo",
       body: (
         <>
           <p>

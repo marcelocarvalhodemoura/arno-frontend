@@ -1,5 +1,5 @@
 import type { CashFlowDisplayRow } from "@/features/cash-flow/split-display";
-import { BRANCH_LABELS, type BranchId, type MovementType, type Transaction, type TxNature } from "@/domain";
+import { BRANCH_LABELS, type BranchId, type Transaction, type TxNature } from "@/domain";
 import {
   dueDateOf,
   natureLabel,
@@ -14,7 +14,7 @@ export type CashFlowSortKey =
   "dueDate" | "paidDate" | "description" | "movementType" | "branch" | "nature" | "settlement" | "amount";
 
 type TxLike = Transaction & {
-  movementType: MovementType | null;
+  movementType: { name?: string } | null;
   member?: { name?: string } | null;
 };
 

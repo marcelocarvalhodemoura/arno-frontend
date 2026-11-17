@@ -81,6 +81,7 @@ import {
   methodLabel,
   MONTHS,
   natureLabel,
+  PAYMENT_METHOD_OPTIONS,
   originLabel,
   dueDateOf,
   paidDateOf,
@@ -100,6 +101,7 @@ import { useFetch } from "@/shared/hooks/use-fetch";
 import { isMensalidadeName, isUnidentifiedName, natureForTypeName } from "@/domain/movement";
 import { clearIdentifyFlag, readIdentifyFlag } from "@/core/session/identify-flag";
 import { buildSplitPartDescription } from "@/features/cash-flow/split-description";
+import MensalidadeFundsLine, { type MensalidadeFunds } from "@/features/cash-flow/MensalidadeFundsLine";
 import { buildCashFlowDisplayRows, splitGroupLabel, uniqueSplitBranches } from "@/features/cash-flow/split-display";
 import { sortCashFlowDisplayRows, type CashFlowSortKey } from "@/features/cash-flow/sort-display";
 import SortableTh, { nextSortDir, type SortDir } from "@/shared/ui/SortableTh";
@@ -110,20 +112,23 @@ type Flow = {
   months: { month: string; income: number; expense: number; net: number; balance: number }[];
 };
 
-type StampUser = { id: string; name: string; username: string } | null;
+type StampUser = { id: string; name: string } | null;
 
 type MemberOption = Member & { accounts: MemberAccount[]; guardians?: MemberGuardian[] };
 
+/** A lista traz só os nomes; o cadastro completo vem de /members e /movement-types. */
 type TxView = Transaction & {
-  movementType: MovementType | null;
-  member: Member | null;
-  account: MemberAccount | null;
-  guardian: MemberGuardian | null;
+  movementType: Pick<MovementType, "id" | "name"> | null;
+  member: Pick<Member, "id" | "name"> | null;
+  account: Pick<MemberAccount, "id" | "holderName"> | null;
+  guardian: Pick<MemberGuardian, "id" | "name" | "relationship"> | null;
   createdByUser: StampUser;
   updatedByUser: StampUser;
   hasNota?: boolean;
   /** Mensalidade com parcela de acordo embutida, ou lançamento só de acordo. */
   arrearsMarker?: "embed" | "agreement" | null;
+  /** Mensalidade (lançamento do Grupo): quanto dela é de cada fundo. */
+  funds?: MensalidadeFunds | null;
 };
 
 type OpenMensalidade = {
@@ -176,6 +181,7 @@ export default function CashFlow() {
   const yearTxs = useFetch<TxView[]>(month ? `/transactions?from=${year}-01-01&to=${year}-12-31` : null);
   const types = useFetch<MovementType[]>("/movement-types");
   const members = useFetch<MemberOption[]>("/members");
+  const membersById = useMemo(() => new Map((members.data ?? []).map((m) => [m.id, m])), [members.data]);
   const projects = useFetch<FinancialProject[]>(`/projects?year=${year || 2026}`);
   const [open, setOpen] = useState(false);
   const [identifyQueue, setIdentifyQueue] = useState<string[]>([]);
@@ -248,6 +254,7 @@ export default function CashFlow() {
     { mode: "single"; tx: TxView } | { mode: "split"; parts: TxView[] } | null
   >(null);
   const [payConfirmDate, setPayConfirmDate] = useState(todayISO);
+  const [payConfirmMethod, setPayConfirmMethod] = useState<PaymentMethod>("pix");
   const [alsoSettleIds, setAlsoSettleIds] = useState<string[]>([]);
   const [sortKey, setSortKey] = useState<CashFlowSortKey>("dueDate");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -292,9 +299,11 @@ export default function CashFlow() {
   );
   const wantsUnidentified = movementFilter === "__unidentified__" || unidentifiedTypeIds.has(movementFilter);
 
+  // Sem tipo e data de pagamento olham o ano: o pagamento pode cair fora do mês do vencimento.
+  const wantsYear = wantsUnidentified || Boolean(paidDateFilter);
   const periodSource = useMemo(() => {
-    return wantsUnidentified && month ? (yearTxs.data ?? txs.data ?? []) : (txs.data ?? []);
-  }, [wantsUnidentified, month, yearTxs.data, txs.data]);
+    return wantsYear && month ? (yearTxs.data ?? txs.data ?? []) : (txs.data ?? []);
+  }, [wantsYear, month, yearTxs.data, txs.data]);
 
   const txById = useMemo(() => {
     const map = new Map<string, TxView>();
@@ -308,7 +317,8 @@ export default function CashFlow() {
     for (const t of periodSource) {
       if (typeFilter && t.type !== typeFilter) continue;
       if (natureFilter && t.nature !== natureFilter) continue;
-      if (branchFilter && t.branch !== branchFilter) continue;
+      // Mensalidade é do Grupo, mas aparece também no ramo do jovem (a caixinha é dele).
+      if (branchFilter && t.branch !== branchFilter && t.funds?.memberBranch !== branchFilter) continue;
       if (wantsUnidentified) {
         if (!isUnidentifiedName(t.movementType?.name)) continue;
       } else if (movementFilter && t.movementTypeId !== movementFilter) {
@@ -363,8 +373,19 @@ export default function CashFlow() {
     wantsUnidentified,
   ]);
 
+  /** Algum filtro além do período: rateios abrem para mostrar qual parte entrou. */
+  const filtersActive = Boolean(
+    query.trim() ||
+    typeFilter ||
+    natureFilter ||
+    branchFilter ||
+    movementFilter ||
+    statusFilter ||
+    dueDateFilter ||
+    paidDateFilter,
+  );
+
   const displayRows = useMemo(() => {
-    const searchActive = Boolean(query.trim());
     const rows = buildCashFlowDisplayRows(
       periodSource.map((t) => ({
         id: t.id,
@@ -381,10 +402,10 @@ export default function CashFlow() {
         movementTypeName: t.movementType?.name ?? null,
       })),
       matchedIds,
-      searchActive,
+      filtersActive,
     );
     return sortCashFlowDisplayRows(rows, txById, sortKey, sortDir);
-  }, [periodSource, matchedIds, query, txById, sortKey, sortDir]);
+  }, [periodSource, matchedIds, filtersActive, txById, sortKey, sortDir]);
 
   function toggleSort(column: CashFlowSortKey) {
     setSortDir((current) => nextSortDir(current, sortKey === column));
@@ -436,7 +457,7 @@ export default function CashFlow() {
       to,
       sortKey,
       sortDir,
-      wantsUnidentified ? "year" : "period",
+      wantsYear ? "year" : "period",
     ].join("|"),
   );
 
@@ -504,8 +525,9 @@ export default function CashFlow() {
   /** Escolher o tipo define entrada/saída (quando o tipo só tem uma direção), natureza, ramo e previsão. */
   function onLaunchTypeChange(movementTypeId: string) {
     const next = (types.data ?? []).find((item) => item.id === movementTypeId);
-    const branch = next?.branch && next.branch !== "grupo" ? next.branch : form.branch;
     const kind = launchKindOf(next?.name);
+    const branch =
+      kind === "mensalidade" ? "grupo" : next?.branch && next.branch !== "grupo" ? next.branch : form.branch;
     const type = next && next.direction !== "both" ? next.direction : form.type;
     const date =
       kind === "mensalidade" && form.date ? competenceDate(form.date.slice(0, 7), dueDay) : form.date || form.paidAt;
@@ -612,6 +634,11 @@ export default function CashFlow() {
     );
   }
 
+  function isMensalidadeType(movementTypeId: string) {
+    const type = (types.data ?? []).find((item) => item.id === movementTypeId);
+    return launchKindOf(type?.name) === "mensalidade";
+  }
+
   function onMemberChange(memberId: string) {
     const member = (members.data ?? []).find((m) => m.id === memberId);
     const primary = member?.accounts.find((a) => a.isPrimary && a.active) ?? member?.accounts[0];
@@ -621,7 +648,8 @@ export default function CashFlow() {
       memberId,
       memberAccountId: primary?.id ?? "",
       memberGuardianId: firstGuardian,
-      branch: member?.branch ?? form.branch,
+      // Mensalidade é sempre do Grupo; a caixinha do ramo sai da divisão.
+      branch: isMensalidadeType(form.movementTypeId) ? "grupo" : (member?.branch ?? form.branch),
     });
   }
 
@@ -1026,6 +1054,7 @@ export default function CashFlow() {
 
   function askMarkAsPaid(target: { mode: "single"; tx: TxView } | { mode: "split"; parts: TxView[] }) {
     setPayConfirmDate(todayISO());
+    setPayConfirmMethod((target.mode === "single" ? target.tx.method : target.parts[0]?.method) ?? "pix");
     setAlsoSettleIds([]);
     setPayConfirm(target);
   }
@@ -1035,7 +1064,12 @@ export default function CashFlow() {
     setAlsoSettleIds([]);
   }
 
-  async function setSplitGroupPaymentStatus(parts: TxView[], paymentStatus: TxPaymentStatus, paidAt?: string) {
+  async function setSplitGroupPaymentStatus(
+    parts: TxView[],
+    paymentStatus: TxPaymentStatus,
+    paidAt?: string,
+    method?: PaymentMethod,
+  ) {
     const paymentDate = (paidAt?.trim() || todayISO()).slice(0, 10);
     await Promise.all(
       parts.map((part) =>
@@ -1044,6 +1078,7 @@ export default function CashFlow() {
           body: JSON.stringify({
             paymentStatus,
             paidAt: paymentStatus === "paid" ? paymentDate : null,
+            ...(paymentStatus === "paid" && method ? { method } : {}),
           }),
         }),
       ),
@@ -1054,13 +1089,14 @@ export default function CashFlow() {
     await Promise.all([flow.reload(), txs.reload(), yearTxs.reload()]);
   }
 
-  async function setPaymentStatus(tx: TxView, paymentStatus: TxPaymentStatus, paidAt?: string) {
+  async function setPaymentStatus(tx: TxView, paymentStatus: TxPaymentStatus, paidAt?: string, method?: PaymentMethod) {
     const paymentDate = (paidAt?.trim() || todayISO()).slice(0, 10);
     await api(`/transactions/${tx.id}`, {
       method: "PATCH",
       body: JSON.stringify({
         paymentStatus,
         paidAt: paymentStatus === "paid" ? paymentDate : null,
+        ...(paymentStatus === "paid" && method ? { method } : {}),
       }),
     });
     toast.success(
@@ -1072,6 +1108,7 @@ export default function CashFlow() {
   async function confirmMarkAsPaid() {
     if (!payConfirm) return;
     const paidAt = payConfirmDate.trim() || todayISO();
+    const method = payConfirmMethod;
     const extras = [...alsoSettleIds];
     const target = payConfirm;
     closePayConfirm();
@@ -1087,6 +1124,7 @@ export default function CashFlow() {
               timing: "on_time",
               paidAt,
               notifyReceipt: true,
+              method,
             }),
           });
           const count = result.settled ?? transactionIds.length;
@@ -1101,10 +1139,10 @@ export default function CashFlow() {
         }
         return;
       }
-      await setPaymentStatus(target.tx, "paid", paidAt);
+      await setPaymentStatus(target.tx, "paid", paidAt, method);
       return;
     }
-    await setSplitGroupPaymentStatus(target.parts, "paid", paidAt);
+    await setSplitGroupPaymentStatus(target.parts, "paid", paidAt, method);
   }
 
   async function pullSicredi(quiet = false) {
@@ -1157,13 +1195,14 @@ export default function CashFlow() {
   ) {
     const settlement = settlementOf(t.paymentStatus, t.date);
     const unidentifiedRow = isUnidentifiedName(t.movementType?.name);
+    const txMember = t.memberId ? membersById.get(t.memberId) : undefined;
     const canAllocateMensalidades =
       Boolean(options.allowSplit) &&
       t.type === "income" &&
       settlement === "paid" &&
       !t.splitGroupId &&
       (unidentifiedRow || isMensalidadeName(t.movementType?.name)) &&
-      !(t.member && (!paysMensalidade(t.member) || matchesMensalidadeAmount(t.member, t.amount)));
+      !(txMember && (!paysMensalidade(txMember) || matchesMensalidadeAmount(txMember, t.amount)));
     const dueDate = dueDateOf(t);
     const paidDate = paidDateOf(t);
     const RowTag = options.nested ? motion.tr : "tr";
@@ -1248,6 +1287,7 @@ export default function CashFlow() {
             {t.account ? `${t.account.holderName} · ` : ""}
             {methodLabel(t.method)}
           </div>
+          {t.funds ? <MensalidadeFundsLine funds={t.funds} /> : null}
           <RecordStamp
             origin={t.origin}
             importSource={t.importSource}
@@ -1539,6 +1579,10 @@ export default function CashFlow() {
             <p className="muted" style={{ margin: "-4px 0 12px" }}>
               Inclui lançamentos sem tipo de todos os meses de {year}.
             </p>
+          ) : month && paidDateFilter ? (
+            <p className="muted" style={{ margin: "-4px 0 12px" }}>
+              Inclui o que foi pago nesse dia com vencimento em qualquer mês de {year}.
+            </p>
           ) : null}
 
           <ListingResults fetching={refreshing} fetchLabel="Atualizando lançamentos…">
@@ -1688,6 +1732,16 @@ export default function CashFlow() {
                             <td className={`num ${signedClass(row.type === "income" ? row.total : -row.total)}`}>
                               {row.type === "income" ? "+" : "−"} {brl(row.total)}
                               <div className="split-amount-meta muted">crédito original</div>
+                              {filtersActive && parts.some((part) => !matchedIds.has(part.id)) ? (
+                                <div className="split-amount-meta muted">
+                                  no filtro:{" "}
+                                  {brl(
+                                    parts
+                                      .filter((part) => matchedIds.has(part.id))
+                                      .reduce((sum, part) => sum + part.amount, 0),
+                                  )}
+                                </div>
+                              ) : null}
                             </td>
                             <td className="cell-actions">
                               <IconButton
@@ -2024,6 +2078,8 @@ export default function CashFlow() {
                         { value: "cash", label: "Dinheiro" },
                         { value: "card", label: "Cartão" },
                         { value: "other", label: "Outro" },
+                        // Permuta só nasce aprovada pela diretoria; na edição aparece para manter o meio.
+                        ...(form.method === "barter" ? [{ value: "barter", label: "Permuta" }] : []),
                       ]}
                     />
                   </label>
@@ -2413,8 +2469,17 @@ export default function CashFlow() {
               <input type="date" value={payConfirmDate} onChange={(e) => setPayConfirmDate(e.target.value)} />
               <small className="muted">Se deixar em branco, usamos a data de hoje.</small>
             </label>
+            <label className="field">
+              <span>Meio do pagamento</span>
+              <SearchableSelect
+                value={payConfirmMethod}
+                placeholder="Selecione"
+                onChange={(value) => setPayConfirmMethod((value || "pix") as PaymentMethod)}
+                options={[...PAYMENT_METHOD_OPTIONS]}
+              />
+            </label>
             {payConfirm.mode === "single" && payConfirmOtherMonths.length ? (
-              <fieldset className="field wide" style={{ border: "none", padding: 0, margin: 0 }}>
+              <fieldset className="field wide" style={{ border: "none", padding: 0 }}>
                 <legend className="muted" style={{ marginBottom: 8 }}>
                   Baixar também outros meses (adiantamento)
                 </legend>

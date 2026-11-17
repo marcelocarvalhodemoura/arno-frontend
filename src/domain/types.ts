@@ -1,26 +1,34 @@
-import type {
-  BranchId,
-  Fee,
-  FinancialProject,
-  ImportSource,
-  MemberAccount,
-  MemberGuardian,
-  MemberRole,
-  MemberStatus,
-  MensalidadeRow,
-  MovementType,
-  PaymentMethod,
-  RecordOrigin,
-  Settings,
-  TxNature,
-  TxPaymentStatus,
-  TxType,
-  UserRole,
-  YouthBranchId,
-} from "@/contract/types";
+export type BranchId = "filhote" | "lobinho" | "escoteiro" | "senior" | "pioneiro" | "flor-de-lis" | "grupo";
 
-/** Tipos e constantes compartilhados com o backend: cópia gerada em src/contract (npm run sync:contract). */
-export * from "@/contract/types";
+export type YouthBranchId = Exclude<BranchId, "grupo">;
+
+export type MemberRole = "jovem" | "escotista" | "dirigente" | "clube";
+export type MemberStatus = "active" | "inactive";
+export type TxType = "income" | "expense";
+export type TxNature = "fixed" | "variable";
+/** barter = permuta: só nasce pela tela Permutas, com aprovação da diretoria. */
+export type PaymentMethod = "pix" | "cash" | "transfer" | "card" | "other" | "barter";
+export type TxPaymentStatus = "paid" | "pending";
+export type MovementDirection = "income" | "expense" | "both";
+/** Para quem é a atividade: internal = associados (acampamento, bivaque), external = comunidade (festival, pastelada). */
+export type MovementAudience = "internal" | "external" | "general";
+export type AccountHolderKind = "parent" | "youth" | "other";
+export type GuardianRelationship =
+  | "Mãe"
+  | "Pai"
+  | "Madrasta"
+  | "Padrasto"
+  | "Tia"
+  | "Tio"
+  | "Avó"
+  | "Avô"
+  | "Irmã"
+  | "Irmão"
+  | "Responsável legal"
+  | "Outro";
+export type ReportGroupBy = "none" | "month" | "branch" | "movementType" | "nature" | "account" | "member" | "method";
+/** superadmin: tudo do admin + auditoria e gestão de outros super admins. */
+export type UserRole = "superadmin" | "admin" | "tesoureiro";
 
 /** O super admin passa em tudo que o admin passa. */
 export function hasRole(role: UserRole | null | undefined, allowed: UserRole[]): boolean {

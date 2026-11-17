@@ -2063,6 +2063,17 @@ table.data tr.tx-split-part:last-of-type td:first-child {
   margin-bottom: 18px;
 }
 
+/* Campo solto no modal (fora de .form-grid): o reset global zera margens e o rótulo
+   colava no texto ou no campo de cima. */
+.modal > :not(h2) + .field,
+.modal > :not(h2) + .barter-plan {
+  margin-top: 14px;
+}
+
+.modal > .barter-plan + p {
+  margin-top: 10px;
+}
+
 .modal-actions {
   display: flex;
   justify-content: flex-end;
@@ -4089,7 +4100,7 @@ form.is-attempted
 
 .report-config__row {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px 16px;
 }
 
@@ -4120,12 +4131,65 @@ form.is-attempted
   font-size: 0.9rem;
 }
 
-.report-dirty {
+.report-views {
+  display: grid;
+  gap: 8px;
+}
+
+.report-views .report-presets {
+  align-items: center;
+}
+
+.report-builder {
+  display: grid;
+  gap: 14px;
+}
+
+.report-builder__templates,
+.report-builder__save {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  align-items: end;
+}
+
+.report-builder__templates .field,
+.report-builder__save .field {
+  flex: 1 1 260px;
+}
+
+.report-builder__actions,
+.report-builder__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.report-builder__steps {
+  display: grid;
+  gap: 14px;
   margin: 0;
-  padding: 8px 12px;
-  border-radius: 10px;
-  background: rgba(232, 180, 35, 0.16);
-  color: #7a5400;
+  padding-left: 1.4rem;
+}
+
+.report-builder__steps > li {
+  display: grid;
+  gap: 6px;
+}
+
+.report-builder__ok {
+  margin: 0;
+  color: var(--forest);
+  font-weight: 600;
+}
+
+.report-sentence {
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: rgba(12, 45, 107, 0.06);
+  color: var(--forest);
+  font-size: 1.05rem;
   font-weight: 600;
 }
 
@@ -4533,4 +4597,52 @@ form.is-attempted
   gap: 8px;
   justify-content: flex-end;
   margin-top: 16px;
+}
+
+/* Composição das mensalidades recebidas: partes recuadas sob cada destino. */
+.fee-composition tr.fee-composition__part td:first-child {
+  padding-left: 28px;
+  color: var(--muted);
+}
+
+/* Fluxo de caixa: divisão da mensalidade (lançamento do Grupo) em fundos. */
+.tx-funds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  margin-top: 4px;
+  font-size: 0.8rem;
+  align-items: center;
+}
+
+.tx-funds__label {
+  color: var(--muted);
+}
+
+.tx-funds__part {
+  border: 1px solid var(--line);
+  background: var(--paper);
+  border-radius: 999px;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+
+.tx-funds__part--difference,
+.tx-funds__warn {
+  color: var(--wine);
+}
+
+/* Prévia da permuta: mensalidades abatidas e sobra em doação. */
+.barter-plan {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.barter-plan p,
+.barter-plan ul {
+  margin: 0;
+}
+
+.barter-plan ul {
+  padding-left: 1.1rem;
 }
