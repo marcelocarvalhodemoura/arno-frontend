@@ -1,5 +1,5 @@
 // GERADO a partir de arno-backend/src/contract/fee-rules.ts — não edite.
-// sha256: 074e1f86a34cfbc92ca6bf01913af0b03a91057f8e8dae51f71c79d0efe5767a
+// sha256: a8e5efb2eaed3d7f32c2e0e572e88d88a6dcd729c2d73f4a15ec6accbb24d235
 import type { FeeComposition, FeeSchedulePeriod, MensalidadeFormula } from './types';
 
 /**
@@ -63,8 +63,17 @@ export const LEGACY_FAMILY_FEES = { nonMember: 82, member: 67.5 };
 
 export type FeeSchedule = FeeSchedulePeriod[];
 
+// toLocaleDateString com fuso é caro e a grade chama isto milhares de vezes: guarda por um minuto.
+let todayCache = { at: 0, value: '' };
 function todayYearMonth(): string {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }).slice(0, 7);
+  const now = Date.now();
+  if (now - todayCache.at > 60_000) {
+    todayCache = {
+      at: now,
+      value: new Date(now).toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }).slice(0, 7),
+    };
+  }
+  return todayCache.value;
 }
 
 /** 'YYYY-MM' a partir de uma data ISO ou de 'YYYY-MM'; sem valor = mês atual. */
