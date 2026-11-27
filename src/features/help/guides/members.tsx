@@ -96,10 +96,12 @@ export const membersGuide: PageGuideContent = {
               <strong>Alterar</strong> — atualiza dados, responsáveis e desconto.
             </li>
             <li>
-              <strong>Desativar</strong> — cancela mensalidades dos meses seguintes; o histórico permanece.
+              <strong>Desativar</strong> — pede uma justificativa e cancela as mensalidades dos meses seguintes; o
+              histórico permanece. Não é possível desativar quem tem acordo de atraso em aberto.
             </li>
             <li>
-              <strong>Reativar</strong> — devolve o associado às cobranças do ano.
+              <strong>Reativar</strong> — pede uma justificativa e devolve o associado às cobranças a partir do mês do
+              retorno. Os meses em que ficou fora do grupo não são cobrados.
             </li>
             <li>
               <strong>Excluir</strong> — só quando não houver histórico que precise preservar.
