@@ -110,6 +110,11 @@ export const membersGuide: PageGuideContent = {
               uma saída ou volta registrada com atraso. A correção fica registrada e as cobranças são realinhadas.
             </li>
             <li>
+              <strong>Possíveis desligamentos</strong> — em Cadastros, lista os jovens com várias mensalidades vencidas
+              seguidas. Envie a pergunta &quot;continua no grupo?&quot; pelo WhatsApp ou por e-mail (prazo de 15 dias)
+              e, confirmada a saída ou vencido o prazo, registre o desligamento com a data sugerida.
+            </li>
+            <li>
               <strong>Excluir</strong> — só quando não houver histórico que precise preservar.
             </li>
           </ul>

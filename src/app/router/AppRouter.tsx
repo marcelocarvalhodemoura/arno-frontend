@@ -15,6 +15,7 @@ import Layout from "@/features/layout/Layout";
 import MembersPage from "@/features/members/MembersPage";
 import MensalidadesPage from "@/features/mensalidades/MensalidadesPage";
 import WhatsAppChargePage from "@/features/mensalidades/WhatsAppChargePage";
+import PossibleDeparturesPage from "@/features/members/PossibleDeparturesPage";
 import ComprovantesPage from "@/features/comprovantes/ComprovantesPage";
 import ClubRemittancePage from "@/features/club-remittance/ClubRemittancePage";
 import SnackFundPage from "@/features/snack-fund/SnackFundPage";
@@ -87,6 +88,7 @@ export function AppRouter() {
               <Route path="taxas" element={<FeesPage />} />
               <Route path="composicao-mensalidade" element={<FeeSchedulePage />} />
               <Route path="associados" element={<MembersPage />} />
+              <Route path="possiveis-desligamentos" element={<PossibleDeparturesPage />} />
               <Route
                 path="projetos"
                 element={

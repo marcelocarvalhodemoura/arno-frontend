@@ -14,7 +14,7 @@ import { useFetch } from "@/shared/hooks/use-fetch";
 type NotifyStatus = { email: boolean; whatsapp: boolean; queued?: number };
 type NotifyLog = {
   id: string;
-  kind: "charge" | "receipt";
+  kind: "charge" | "receipt" | "departure_check";
   channel: "email" | "whatsapp";
   status: "queued" | "sending" | "sent" | "failed" | "skipped";
   to: string;
@@ -166,7 +166,13 @@ export default function SettingsPage() {
                 (log.data ?? []).map((item) => (
                   <tr key={item.id}>
                     <td>{formatDateTime(item.createdAt)}</td>
-                    <td>{item.kind === "charge" ? "Cobrança" : "Comprovante"}</td>
+                    <td>
+                      {item.kind === "charge"
+                        ? "Cobrança"
+                        : item.kind === "departure_check"
+                          ? "Confirmação de permanência"
+                          : "Comprovante"}
+                    </td>
                     <td>{item.channel === "email" ? "E-mail" : "WhatsApp"}</td>
                     <td>
                       {item.to || "—"}

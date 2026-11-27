@@ -21,6 +21,7 @@ import {
   FaSitemap,
   FaThLarge,
   FaUserSecret,
+  FaUserClock,
   FaUserShield,
   FaUsers,
   FaWallet,
@@ -91,6 +92,12 @@ export const NAV_SECTIONS: NavSection[] = [
     icon: FaAddressBook,
     items: [
       { to: "/associados", label: "Associados", icon: FaUsers, roles: ["admin", "tesoureiro"] },
+      {
+        to: "/possiveis-desligamentos",
+        label: "Possíveis desligamentos",
+        icon: FaUserClock,
+        roles: ["admin", "tesoureiro"],
+      },
       {
         to: "/composicao-mensalidade",
         label: "Composição da mensalidade",
