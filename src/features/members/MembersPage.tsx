@@ -144,6 +144,11 @@ export default function Members() {
   const [statusFilter, setStatusFilter] = useState<"active" | "inactive" | "">("");
   const [ltcFilter, setLtcFilter] = useState<"yes" | "no" | "">("");
   const [accountsOf, setAccountsOf] = useState<MemberView | null>(null);
+  const [statusOf, setStatusOf] = useState<MemberView | null>(null);
+  const [statusReason, setStatusReason] = useState("");
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [savingStatus, setSavingStatus] = useState(false);
+  const [attemptedStatus, setAttemptedStatus] = useState(false);
   const [editingAccount, setEditingAccount] = useState<MemberView["accounts"][number] | null>(null);
   const [accountForm, setAccountForm] = useState(emptyAccount);
   const [accountQuery, setAccountQuery] = useState("");
@@ -340,19 +345,43 @@ export default function Members() {
     }
   }
 
-  async function toggle(member: Member) {
+  function openStatus(member: MemberView) {
+    setStatusOf(member);
+    setStatusReason("");
+    setStatusError(null);
+    setAttemptedStatus(false);
+  }
+
+  function closeStatus() {
+    if (savingStatus) return;
+    setStatusOf(null);
+  }
+
+  async function saveStatus(e: FormEvent<HTMLFormElement>) {
+    if (!submitAttempt(e, setAttemptedStatus)) return;
+    if (!statusOf) return;
+    const member = statusOf;
     const nextStatus = member.status === "active" ? "inactive" : "active";
-    await api(`/members/${member.id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ status: nextStatus }),
-    });
-    await list.reload();
-    flash(member.id);
-    toast.success(
-      nextStatus === "inactive"
-        ? "Associado inativado. Mensalidades dos meses seguintes foram canceladas."
-        : "Associado reativado com sucesso.",
-    );
+    setSavingStatus(true);
+    setStatusError(null);
+    try {
+      await api(`/members/${member.id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: nextStatus, reason: statusReason.trim() }),
+      });
+      setStatusOf(null);
+      await list.reload();
+      flash(member.id);
+      toast.success(
+        nextStatus === "inactive"
+          ? "Associado inativado. Mensalidades dos meses seguintes foram canceladas."
+          : "Associado reativado. Os meses em que esteve fora não serão cobrados.",
+      );
+    } catch (err) {
+      setStatusError(err instanceof Error ? err.message : "Não foi possível alterar a situação do associado");
+    } finally {
+      setSavingStatus(false);
+    }
   }
 
   async function saveAccount(e: FormEvent<HTMLFormElement>) {
@@ -609,7 +638,7 @@ export default function Members() {
                         <IconButton
                           label={m.status === "active" ? "Desativar associado" : "Reativar associado"}
                           tone={m.status === "active" ? "danger" : "success"}
-                          onClick={() => void toggle(m)}
+                          onClick={() => openStatus(m)}
                         >
                           {m.status === "active" ? <FaUserSlash /> : <FaUserCheck />}
                         </IconButton>
@@ -634,6 +663,45 @@ export default function Members() {
       </FetchOverlay>
 
       <AnimatePresence>
+        {statusOf ? (
+          <Modal
+            key="member-status"
+            title={`${statusOf.status === "active" ? "Inativar" : "Reativar"} · ${statusOf.name}`}
+            onClose={closeStatus}
+          >
+            <form onSubmit={saveStatus} className={formClass("form-grid", attemptedStatus)} noValidate>
+              {statusError ? <div className="error wide">{statusError}</div> : null}
+              <p className="wide">
+                {statusOf.status === "active"
+                  ? "As mensalidades pendentes a partir do próximo mês serão canceladas. O mês atual e os anteriores continuam devidos. O histórico do associado é mantido."
+                  : "O associado volta a receber cobranças a partir deste mês. Os meses em que esteve fora do grupo não serão cobrados."}
+              </p>
+              <label className="field wide">
+                <span>Justificativa</span>
+                <textarea
+                  required
+                  minLength={3}
+                  autoFocus
+                  placeholder={
+                    statusOf.status === "active"
+                      ? "Ex.: desligamento pedido por e-mail em 10/11; ou confirmado pelo chefe de seção"
+                      : "Ex.: retorno combinado com o responsável"
+                  }
+                  value={statusReason}
+                  onChange={(e) => setStatusReason(e.target.value)}
+                />
+              </label>
+              <div className="modal-actions wide">
+                <button className="btn btn-ghost" type="button" onClick={closeStatus} disabled={savingStatus}>
+                  Cancelar
+                </button>
+                <SubmitButton busy={savingStatus} busyLabel="Salvando…">
+                  {statusOf.status === "active" ? "Inativar associado" : "Reativar associado"}
+                </SubmitButton>
+              </div>
+            </form>
+          </Modal>
+        ) : null}
         {open ? (
           <Modal key="member-form" title={editing ? "Alterar associado" : "Novo associado"} onClose={closeForm}>
             <form onSubmit={save} className={formClass("form-grid", attempted)} noValidate>
