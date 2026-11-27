@@ -33,9 +33,15 @@ import SearchableSelect from "@/shared/ui/SearchableSelect";
 import { AnimatePresence } from "framer-motion";
 import { FaIdCard, FaPen, FaTrashAlt, FaUserCheck, FaUserSlash, FaWallet } from "react-icons/fa";
 import MemberProfileModal from "@/features/members/MemberProfileModal";
+import {
+  DEPARTURE_KIND_LABEL,
+  statusChangeEffects,
+  type DepartureKind,
+  type StatusChangeResponse,
+} from "@/features/members/StatusHistorySection";
 import { api } from "@/core/http";
 import { useToast } from "@/shared/feedback/toast";
-import { brl, formatDate, holderKindLabel, roleLabel, yesNo } from "@/shared/lib/format";
+import { brl, formatDate, holderKindLabel, roleLabel, todayISO, yesNo } from "@/shared/lib/format";
 import { matchesQuery, usePagedList } from "@/shared/lib/listing";
 import { formatMoney, maskPhone } from "@/shared/lib/masks";
 import { formClass, submitAttempt } from "@/shared/lib/form";
@@ -146,6 +152,9 @@ export default function Members() {
   const [accountsOf, setAccountsOf] = useState<MemberView | null>(null);
   const [statusOf, setStatusOf] = useState<MemberView | null>(null);
   const [statusReason, setStatusReason] = useState("");
+  const [statusDate, setStatusDate] = useState("");
+  const [statusKind, setStatusKind] = useState<DepartureKind | "">("");
+  const [statusConfirmedBy, setStatusConfirmedBy] = useState("");
   const [statusError, setStatusError] = useState<string | null>(null);
   const [savingStatus, setSavingStatus] = useState(false);
   const [attemptedStatus, setAttemptedStatus] = useState(false);
@@ -348,6 +357,9 @@ export default function Members() {
   function openStatus(member: MemberView) {
     setStatusOf(member);
     setStatusReason("");
+    setStatusDate(todayISO());
+    setStatusKind("");
+    setStatusConfirmedBy("");
     setStatusError(null);
     setAttemptedStatus(false);
   }
@@ -365,17 +377,24 @@ export default function Members() {
     setSavingStatus(true);
     setStatusError(null);
     try {
-      await api(`/members/${member.id}/status`, {
+      const result = await api<StatusChangeResponse>(`/members/${member.id}/status`, {
         method: "PATCH",
-        body: JSON.stringify({ status: nextStatus, reason: statusReason.trim() }),
+        body: JSON.stringify({
+          status: nextStatus,
+          reason: statusReason.trim(),
+          effectiveDate: statusDate,
+          ...(nextStatus === "inactive" ? { kind: statusKind || undefined } : {}),
+          ...(nextStatus === "inactive" && statusKind === "informal" ? { confirmedBy: statusConfirmedBy.trim() } : {}),
+        }),
       });
       setStatusOf(null);
       await list.reload();
       flash(member.id);
       toast.success(
-        nextStatus === "inactive"
-          ? "Associado inativado. Mensalidades dos meses seguintes foram canceladas."
-          : "Associado reativado. Os meses em que esteve fora não serão cobrados.",
+        (nextStatus === "inactive"
+          ? `Associado inativado com saída em ${formatDate(statusDate)}.`
+          : `Associado reativado com retorno em ${formatDate(statusDate)}. Os meses em que esteve fora não serão cobrados.`) +
+          statusChangeEffects(result),
       );
     } catch (err) {
       setStatusError(err instanceof Error ? err.message : "Não foi possível alterar a situação do associado");
@@ -673,9 +692,45 @@ export default function Members() {
               {statusError ? <div className="error wide">{statusError}</div> : null}
               <p className="wide">
                 {statusOf.status === "active"
-                  ? "As mensalidades pendentes a partir do próximo mês serão canceladas. O mês atual e os anteriores continuam devidos. O histórico do associado é mantido."
-                  : "O associado volta a receber cobranças a partir deste mês. Os meses em que esteve fora do grupo não serão cobrados."}
+                  ? "Informe quando o jovem saiu de fato, mesmo que tenha sido meses atrás. As mensalidades pendentes a partir do mês seguinte à saída vão para a lixeira; o mês da saída e os anteriores continuam devidos. Mensalidades pagas não mudam."
+                  : "Informe quando o associado voltou de fato. As cobranças voltam a partir do mês do retorno, e os meses em que esteve fora do grupo não são cobrados."}
               </p>
+              <label className="field">
+                <span>{statusOf.status === "active" ? "Data da saída" : "Data do retorno"}</span>
+                <input
+                  required
+                  type="date"
+                  max={todayISO()}
+                  value={statusDate}
+                  onChange={(e) => setStatusDate(e.target.value)}
+                />
+              </label>
+              {statusOf.status === "active" ? (
+                <label className="field">
+                  <span>Tipo de desligamento</span>
+                  <SearchableSelect
+                    required
+                    value={statusKind}
+                    placeholder="Selecione"
+                    onChange={(value) => setStatusKind(value as DepartureKind)}
+                    options={(Object.keys(DEPARTURE_KIND_LABEL) as DepartureKind[]).map((kind) => ({
+                      value: kind,
+                      label: DEPARTURE_KIND_LABEL[kind],
+                    }))}
+                  />
+                </label>
+              ) : null}
+              {statusOf.status === "active" && statusKind === "informal" ? (
+                <label className="field wide">
+                  <span>Quem confirmou a saída</span>
+                  <input
+                    required
+                    placeholder="Ex.: Chefe Paula (seção escoteira) ou a mãe, por WhatsApp"
+                    value={statusConfirmedBy}
+                    onChange={(e) => setStatusConfirmedBy(e.target.value)}
+                  />
+                </label>
+              ) : null}
               <label className="field wide">
                 <span>Justificativa</span>
                 <textarea
@@ -1209,7 +1264,13 @@ export default function Members() {
           </Modal>
         ) : null}
       </AnimatePresence>
-      {profileOf ? <MemberProfileModal memberId={profileOf} onClose={() => setProfileOf(null)} /> : null}
+      {profileOf ? (
+        <MemberProfileModal
+          memberId={profileOf}
+          onClose={() => setProfileOf(null)}
+          onChanged={() => void list.reload()}
+        />
+      ) : null}
     </div>
   );
 }

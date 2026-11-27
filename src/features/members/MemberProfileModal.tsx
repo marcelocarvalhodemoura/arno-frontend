@@ -4,6 +4,7 @@ import Modal from "@/shared/ui/Modal";
 import { useFetch } from "@/shared/hooks/use-fetch";
 import { brl, formatDate, MONTHS, roleLabel } from "@/shared/lib/format";
 import { paysMensalidade } from "@/domain";
+import StatusHistorySection from "@/features/members/StatusHistorySection";
 
 const YOUTH_GRADE_BRANCHES = new Set(["filhote", "lobinho", "escoteiro", "senior", "pioneiro"]);
 
@@ -15,7 +16,16 @@ function isYouthMember(member: { role: string; branch: string }) {
 const CELL_LABEL: Record<string, string> = { paid: "pago", pending: "aberto", overdue: "venc.", none: "—" };
 
 /** Tudo de um associado num lugar: situação, grade do ano, acordos e últimos lançamentos. */
-export default function MemberProfileModal({ memberId, onClose }: { memberId: string; onClose: () => void }) {
+export default function MemberProfileModal({
+  memberId,
+  onClose,
+  onChanged,
+}: {
+  memberId: string;
+  onClose: () => void;
+  /** Avisado quando algo na ficha muda as cobranças (ex.: correção da data de saída). */
+  onChanged?: () => void;
+}) {
   const navigate = useNavigate();
   const profile = useFetch<MemberProfile>(`/members/${memberId}/profile`);
   const data = profile.data;
@@ -88,6 +98,14 @@ export default function MemberProfileModal({ memberId, onClose }: { memberId: st
               </div>
             </div>
           ) : null}
+
+          <StatusHistorySection
+            memberId={memberId}
+            onChanged={() => {
+              void profile.reload();
+              onChanged?.();
+            }}
+          />
 
           {data.recent.length ? (
             <div>

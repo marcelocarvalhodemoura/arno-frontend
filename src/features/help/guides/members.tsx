@@ -96,12 +96,18 @@ export const membersGuide: PageGuideContent = {
               <strong>Alterar</strong> — atualiza dados, responsáveis e desconto.
             </li>
             <li>
-              <strong>Desativar</strong> — pede uma justificativa e cancela as mensalidades dos meses seguintes; o
-              histórico permanece. Não é possível desativar quem tem acordo de atraso em aberto.
+              <strong>Desativar</strong> — pede a data em que o jovem saiu de fato (pode ser meses atrás), o tipo
+              (formal por e-mail, informal confirmado por alguém, ou abandono) e uma justificativa. As mensalidades
+              pendentes a partir do mês seguinte à saída vão para a lixeira; as pagas não mudam e, se houver alguma no
+              período fora, o sistema avisa. Não é possível desativar quem tem acordo de atraso em aberto.
             </li>
             <li>
-              <strong>Reativar</strong> — pede uma justificativa e devolve o associado às cobranças a partir do mês do
-              retorno. Os meses em que ficou fora do grupo não são cobrados.
+              <strong>Reativar</strong> — pede a data do retorno e uma justificativa. As cobranças voltam a partir do
+              mês do retorno; os meses em que ficou fora do grupo não são cobrados.
+            </li>
+            <li>
+              <strong>Corrigir data</strong> — na ficha do associado, em &quot;Saídas e retornos&quot;, ajuste a data de
+              uma saída ou volta registrada com atraso. A correção fica registrada e as cobranças são realinhadas.
             </li>
             <li>
               <strong>Excluir</strong> — só quando não houver histórico que precise preservar.
